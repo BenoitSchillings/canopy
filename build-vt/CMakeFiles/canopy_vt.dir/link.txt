@@ -1,0 +1,2 @@
+/usr/bin/ar qc libcanopy_vt.a CMakeFiles/canopy_vt.dir/src/core/cell.cpp.o CMakeFiles/canopy_vt.dir/src/core/pty.cpp.o CMakeFiles/canopy_vt.dir/src/core/terminal.cpp.o CMakeFiles/canopy_vt.dir/src/core/vt_parser.cpp.o CMakeFiles/canopy_vt.dir/src/core/keys.cpp.o CMakeFiles/canopy_vt.dir/src/core/blocks.cpp.o CMakeFiles/canopy_vt.dir/src/core/session.cpp.o
+/usr/bin/ranlib libcanopy_vt.a

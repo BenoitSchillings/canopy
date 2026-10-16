@@ -4,6 +4,7 @@
 #include "terminal.h"
 #include "blocks.h"
 #include <atomic>
+#include <condition_variable>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -59,6 +60,9 @@ private:
     std::string inbox_;                      // bytes queued by the reader thread
     std::atomic<bool> running_{false};
     int wake_pipe_[2] = {-1, -1};
+    std::condition_variable drained_;        // reader waits here when inbox_ is full (backpressure)
+    std::atomic<bool> eof_{false};           // reader saw EOF/HUP on the pty
+    int64_t last_history_base_ = 0;          // to notify BlockTracker::on_history_base
 };
 
 // Locates shell/canopy.bash: $CANOPY_SHELL_DIR, next to the executable (../shell), or

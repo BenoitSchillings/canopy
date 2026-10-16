@@ -1,0 +1,100 @@
+# Canopy configuration — copy to ~/.config/canopy/canopy.conf
+# (or $XDG_CONFIG_HOME/canopy/canopy.conf).
+#
+# Syntax: one "key = value" per line. Lines starting with '#' or ';' are
+# comments; a '#' after an unquoted value also starts a comment. Values may be
+# quoted with "..." (supports \" \\ \n \t) or '...' (literal). Booleans accept
+# true/false, yes/no, on/off, 1/0. Colors are #rrggbb (or #rgb). Unknown keys
+# are reported as warnings at startup and otherwise ignored.
+#
+# Every key below is shown with its default value, commented out.
+
+# ---- Font and cell geometry -------------------------------------------------
+# fontconfig family name; falls back to any monospace font if not found.
+#font_family = Source Code Pro
+# Bold face family; empty means derive from font_family / synthesize.
+#font_family_bold =
+# Font size in pixels (float).
+#font_size = 15
+# Extra pixels added to each cell horizontally / vertically.
+#cell_padding_x = 0
+#cell_padding_y = 1
+
+# ---- Terminal ---------------------------------------------------------------
+# Default grid size for a new pane.
+#cols = 110
+#rows = 32
+# Scrollback lines kept per session.
+#scrollback = 20000
+# Shell to run; empty means $SHELL.
+#shell =
+# Start the shell as a login shell (argv[0] prefixed with '-').
+#login_shell = false
+
+# ---- Cursor -----------------------------------------------------------------
+#cursor_blink = true
+# Blink rate in Hz.
+#cursor_blink_hz = 1.2
+# block | bar | underline
+#cursor_style = block
+
+# ---- Bell -------------------------------------------------------------------
+#audible_bell = false
+#visual_bell = true
+
+# ---- Features ---------------------------------------------------------------
+# Inject the bash integration (blocks, cwd tracking, `canopy new` etc.).
+#shell_integration = true
+# Scan block output for paths, URLs, errors, JSON and tables.
+#structured_output = true
+# Show the activity outliner (toggle at runtime with F2).
+#sidebar_visible = true
+# Sidebar width in pixels.
+#sidebar_width = 240
+# Animate zoom/pan/fold transitions.
+#animations = true
+# Multiplier applied to animation durations (2 = twice as fast).
+#animation_speed = 1.0
+
+# ---- Window -----------------------------------------------------------------
+# Initial window size in pixels.
+#window_width = 1600
+#window_height = 1000
+
+# ---- Theme: terminal colors --------------------------------------------------
+# Default text and background colors.
+#foreground = #d8dce4
+#background = #121418
+#cursor = #ffcc66
+#selection = #3b5b8a
+# The 16 ANSI colors. Defaults are a "Tokyo Night"-derived palette with the
+# bright set lifted slightly so bold-brightening stays visible.
+#color0 = #1b1d2b    # black
+#color1 = #f7768e    # red
+#color2 = #9ece6a    # green
+#color3 = #e0af68    # yellow
+#color4 = #7aa2f7    # blue
+#color5 = #bb9af7    # magenta
+#color6 = #7dcfff    # cyan
+#color7 = #a9b1d6    # white
+#color8 = #444b6a    # bright black
+#color9 = #ff9ea8    # bright red
+#color10 = #b9f27c   # bright green
+#color11 = #ffc777   # bright yellow
+#color12 = #8db0ff   # bright blue
+#color13 = #cfb3ff   # bright magenta
+#color14 = #9adcff   # bright cyan
+#color15 = #c8d3f5   # bright white
+
+# ---- Theme: UI chrome --------------------------------------------------------
+# Sidebar / overlay background and text.
+#chrome_bg = #0c0e11
+#chrome_fg = #a0a8b4
+# Highlight color for the focused pane, selected block, links.
+#accent = #5ea0ff
+# Block status colors (exit 0 / non-zero / warnings in output).
+#ok = #58c37a
+#error = #e55a5a
+#warning = #e8b34a
+# Background of the infinite canvas behind the panes.
+#canvas_bg = #08090b

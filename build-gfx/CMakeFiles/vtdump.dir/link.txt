@@ -1,0 +1,1 @@
+/usr/bin/c++ -O2 -g CMakeFiles/vtdump.dir/tools/vtdump.cpp.o -o vtdump  libcanopy_vt.a -lutil 

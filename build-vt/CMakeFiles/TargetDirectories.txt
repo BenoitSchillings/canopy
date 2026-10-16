@@ -1,0 +1,13 @@
+/home/benoit/terminal/build-vt/CMakeFiles/canopy_vt.dir
+/home/benoit/terminal/build-vt/CMakeFiles/canopy_model.dir
+/home/benoit/terminal/build-vt/CMakeFiles/canopy_gfx.dir
+/home/benoit/terminal/build-vt/CMakeFiles/canopy.dir
+/home/benoit/terminal/build-vt/CMakeFiles/vtdump.dir
+/home/benoit/terminal/build-vt/CMakeFiles/test_json.dir
+/home/benoit/terminal/build-vt/CMakeFiles/test.dir
+/home/benoit/terminal/build-vt/CMakeFiles/edit_cache.dir
+/home/benoit/terminal/build-vt/CMakeFiles/rebuild_cache.dir
+/home/benoit/terminal/build-vt/CMakeFiles/list_install_components.dir
+/home/benoit/terminal/build-vt/CMakeFiles/install.dir
+/home/benoit/terminal/build-vt/CMakeFiles/install/local.dir
+/home/benoit/terminal/build-vt/CMakeFiles/install/strip.dir

@@ -30,31 +30,45 @@ USAGE
 }
 
 # ---- prompt / command lifecycle ----
+# The DEBUG trap fires before every simple command, including the ones that make up
+# PROMPT_COMMAND. We only treat it as "command start" when it is the first command after a
+# prompt was displayed (__canopy_interactive is set by the last PROMPT_COMMAND entry), the
+# same technique bash-preexec uses. Commands run in subshells/pipelines fire the trap in the
+# child; the OSC still reaches the terminal, and duplicates are harmless to the tracker.
+__canopy_interactive=""
 __canopy_in_command=0
+__canopy_histcmd=""
 __canopy_preexec() {
-    # DEBUG trap fires for every simple command; only act on the first one after a prompt.
-    [[ "$BASH_COMMAND" == "__canopy_precmd" ]] && return
-    [[ -n "${COMP_LINE:-}" ]] && return           # completion
-    (( __canopy_in_command )) && return
-    __canopy_in_command=1
+    [[ -n "${COMP_LINE:-}" ]] && return               # completion
+    [[ -z "${__canopy_interactive:-}" ]] && return     # not the first command after a prompt
+    (( BASH_SUBSHELL == 0 )) && __canopy_interactive=""
+    case "$BASH_COMMAND" in __canopy_*) return ;; esac # our own prompt machinery
     local cmdline
     cmdline=$(HISTTIMEFORMAT= builtin history 1 2>/dev/null)
-    cmdline="${cmdline#*[0-9]  }"                  # strip history number
+    cmdline="${cmdline#*[0-9]  }"                     # strip history number
     [[ -z "$cmdline" ]] && cmdline="$BASH_COMMAND"
+    (( BASH_SUBSHELL == 0 )) && __canopy_in_command=1
     __canopy_osc "7770;cmd;$(__canopy_b64 "$cmdline")"
     __canopy_osc "133;C"
 }
 __canopy_precmd() {
     local status=$?
-    if (( __canopy_in_command )); then
-        __canopy_osc "133;D;$status"
-    else
-        __canopy_osc "133;D"                      # empty prompt (just Enter)
+    if (( ! __canopy_in_command )) && [[ -n "$__canopy_histcmd" && "$HISTCMD" != "$__canopy_histcmd" ]]; then
+        # A command ran but the DEBUG trap never saw it (bash resets the trap in subshells, so
+        # e.g. "(cd x && make)" is invisible). Report it late; Canopy anchors it approximately.
+        local cmdline
+        cmdline=$(HISTTIMEFORMAT= builtin history 1 2>/dev/null)
+        cmdline="${cmdline#*[0-9]  }"
+        [[ -n "$cmdline" ]] && __canopy_osc "7770;late;$(__canopy_b64 "$cmdline")"
     fi
+    # Always report; Canopy drops the block when no command was started (empty prompt).
+    __canopy_osc "133;D;$status"
     __canopy_in_command=0
+    __canopy_histcmd=$HISTCMD
     __canopy_cwd
     return $status
 }
+__canopy_interactive_on() { __canopy_interactive=1; }
 
 # Wrap PS1 with A (prompt start) and B (prompt end). \[ \] mark zero-width.
 __canopy_ps1_wrap() {
@@ -64,12 +78,12 @@ __canopy_ps1_wrap() {
 
 if [[ -n "${PROMPT_COMMAND:-}" ]]; then
     if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
-        PROMPT_COMMAND=(__canopy_precmd "${PROMPT_COMMAND[@]}" __canopy_ps1_wrap)
+        PROMPT_COMMAND=(__canopy_precmd "${PROMPT_COMMAND[@]}" __canopy_ps1_wrap __canopy_interactive_on)
     else
-        PROMPT_COMMAND="__canopy_precmd;${PROMPT_COMMAND};__canopy_ps1_wrap"
+        PROMPT_COMMAND="__canopy_precmd;${PROMPT_COMMAND};__canopy_ps1_wrap;__canopy_interactive_on"
     fi
 else
-    PROMPT_COMMAND="__canopy_precmd;__canopy_ps1_wrap"
+    PROMPT_COMMAND="__canopy_precmd;__canopy_ps1_wrap;__canopy_interactive_on"
 fi
 trap '__canopy_preexec' DEBUG
 __canopy_ps1_wrap

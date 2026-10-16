@@ -20,8 +20,8 @@ struct Cursor {
     CursorStyle style = CursorStyle::Block;
 };
 
-enum class MouseMode : uint8_t { None = 0, X10 = 9, Normal = 1000, ButtonEvent = 1002, AnyEvent = 1003 };
-enum class MouseEncoding : uint8_t { Default = 0, Utf8 = 1005, Sgr = 1006, Urxvt = 1015, SgrPixels = 1016 };
+enum class MouseMode : uint16_t { None = 0, X10 = 9, Normal = 1000, ButtonEvent = 1002, AnyEvent = 1003 };
+enum class MouseEncoding : uint16_t { Default = 0, Utf8 = 1005, Sgr = 1006, Urxvt = 1015, SgrPixels = 1016 };
 
 struct TerminalModes {
     bool app_cursor_keys = false;   // DECCKM
@@ -119,6 +119,14 @@ public:
     // Focus in/out reporting (sends CSI I / CSI O when mode 1004 is set).
     void notify_focus(bool focused);
     // Title stack etc. are internal.
+
+    // ---- environment supplied by the UI (optional; sensible defaults) ----
+    void set_cell_pixel_size(int w, int h);                                 // for CSI 14/16 t replies
+    void set_default_colors(uint32_t fg_rgb, uint32_t bg_rgb, uint32_t cursor_rgb); // 0xRRGGBB; OSC 10/11/12 replies
+    void set_palette_color(int idx, uint32_t rgb);                          // 0..255, 0xRRGGBB; OSC 4 replies
+    // Colors as currently reported (defaults, possibly overridden by OSC 10/11/12/4 from an app).
+    uint32_t default_fg() const; uint32_t default_bg() const; uint32_t cursor_color() const;
+    uint32_t palette_color(int idx) const;
 
     struct Impl;
 private:

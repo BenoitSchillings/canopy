@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Canopy
+Comment=Terminal with an activity tree, command blocks and a zoomable canvas
+Exec=canopy
+Icon=utilities-terminal
+Terminal=false
+Type=Application
+Categories=System;TerminalEmulator;
+Keywords=shell;prompt;command;commandline;terminal;
