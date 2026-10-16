@@ -114,9 +114,11 @@ Environment: `CANOPY=1`, `CANOPY_ACTIVITY=<id>`, `TERM=xterm-256color`,
 `COLORTERM=truecolor`.
 
 ## 6. Keybindings (defaults)
-Ctrl+Shift+C/V copy/paste · Ctrl+Shift+F search · Ctrl+Shift+N new child
-activity · Ctrl+Shift+T new sibling · Ctrl+Shift+W close activity ·
-Ctrl+Shift+Up/Down previous/next block · Ctrl+Shift+Left/Right fold/unfold
-block · Ctrl+Shift+Enter re-run selected block · Ctrl+Shift+P command palette ·
-F1 overview · F2 sidebar · Ctrl+= / Ctrl+- zoom · Ctrl+0 reset zoom ·
-Ctrl+Alt+Arrows move between panes · Shift+PgUp/PgDn scrollback.
+Ctrl+Shift+C/V copy/paste · Shift+Insert / middle-click paste primary · Ctrl+Shift+F search ·
+Ctrl+Shift+N new child activity · Ctrl+Shift+T new sibling · Ctrl+Shift+W close activity ·
+Ctrl+Shift+R rename · Ctrl+Shift+Up/Down previous/next block · Ctrl+Shift+Left/Right fold/unfold ·
+Ctrl+Shift+Enter re-run selected block · Ctrl+Shift+E next error line · Ctrl+Shift+J pretty JSON ·
+Ctrl+Shift+P command palette · F1 overview · F2 sidebar · F10 help · Ctrl+wheel / Ctrl+= / Ctrl+- zoom ·
+Ctrl+0 reset zoom · Ctrl+Shift+= / - font size · Ctrl+Alt+Arrows move between panes ·
+Alt+drag or middle-drag pan · Shift+PgUp/PgDn scrollback · Ctrl+click open path/URL ·
+gutter click selects a block (double-click folds, right-click menu) · table header click sorts.
