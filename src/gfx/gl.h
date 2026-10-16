@@ -1,7 +1,9 @@
 #pragma once
 // OpenGL 3.3 core function loading. Include this instead of <GL/gl.h>.
 // Implementation loads pointers with SDL_GL_GetProcAddress in gl_load().
-#define GL_GLEXT_PROTOTYPES 0
+#ifdef GL_GLEXT_PROTOTYPES
+#undef GL_GLEXT_PROTOTYPES
+#endif
 #include <GL/glcorearb.h>
 
 namespace canopy::gfx {
