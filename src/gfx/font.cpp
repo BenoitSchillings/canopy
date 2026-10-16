@@ -42,6 +42,27 @@ struct FaceRef {
     FcCharSet* charset = nullptr;    // coverage (fallback faces), owned
 };
 
+// Code points that default to emoji presentation (color fallback preferred).
+bool is_emoji_presentation(char32_t cp) {
+    return (cp >= 0x1F300 && cp <= 0x1FAFF) || (cp >= 0x1F1E6 && cp <= 0x1F1FF) ||
+           (cp >= 0x2600 && cp <= 0x27BF && (cp == 0x2614 || cp == 0x2615 || (cp >= 0x2648 && cp <= 0x2653) || cp == 0x267F ||
+                                             cp == 0x2693 || cp == 0x26A1 || cp == 0x26AA || cp == 0x26AB || cp == 0x26BD || cp == 0x26BE ||
+                                             cp == 0x26C4 || cp == 0x26C5 || cp == 0x26CE || cp == 0x26D4 || cp == 0x26EA || cp == 0x26F2 ||
+                                             cp == 0x26F3 || cp == 0x26F5 || cp == 0x26FA || cp == 0x26FD || cp == 0x2705 || cp == 0x270A ||
+                                             cp == 0x270B || cp == 0x2728 || cp == 0x274C || cp == 0x274E || (cp >= 0x2753 && cp <= 0x2755) ||
+                                             cp == 0x2757 || (cp >= 0x2795 && cp <= 0x2797) || cp == 0x27B0 || cp == 0x27BF)) ||
+           cp == 0x231A || cp == 0x231B || cp == 0x23E9 || cp == 0x23EA || cp == 0x23EB || cp == 0x23EC || cp == 0x23F0 || cp == 0x23F3 ||
+           cp == 0x25FD || cp == 0x25FE || cp == 0x2B1B || cp == 0x2B1C || cp == 0x2B50 || cp == 0x2B55 || cp == 0x1F004 || cp == 0x1F0CF ||
+           cp == 0x1F18E || (cp >= 0x1F191 && cp <= 0x1F19A) || cp == 0x1F201 || cp == 0x1F21A || cp == 0x1F22F || (cp >= 0x1F232 && cp <= 0x1F236) ||
+           (cp >= 0x1F238 && cp <= 0x1F23A) || cp == 0x1F250 || cp == 0x1F251;
+}
+
+// Zero-width code points that must not produce a visible glyph (joiners, variation selectors).
+bool is_zero_width(char32_t cp) {
+    return (cp >= 0x200B && cp <= 0x200F) || (cp >= 0xFE00 && cp <= 0xFE0F) || cp == 0xFEFF || (cp >= 0xE0100 && cp <= 0xE01EF) ||
+           cp == 0x2060 || cp == 0x00AD;
+}
+
 uint64_t glyph_key(char32_t cp, GlyphStyle st) { return (uint64_t)cp | ((uint64_t)st << 32); }
 
 FcPattern* make_pattern(const std::string& family, bool bold, bool italic) {
@@ -57,7 +78,9 @@ FcPattern* make_pattern(const std::string& family, bool bold, bool italic) {
     return p;
 }
 
-bool match_pattern(FcPattern* p, std::string* path, int* index, FcLangSet** langs) {
+// want_family: when non-empty, require the match to actually be that family (fontconfig
+// otherwise silently substitutes sans-serif for unknown families).
+bool match_pattern(FcPattern* p, std::string* path, int* index, FcLangSet** langs, const std::string& want_family = "") {
     FcConfigSubstitute(nullptr, p, FcMatchPattern);
     FcDefaultSubstitute(p);
     FcResult res;
@@ -65,6 +88,13 @@ bool match_pattern(FcPattern* p, std::string* path, int* index, FcLangSet** lang
     if (!m) return false;
     FcChar8* file = nullptr;
     bool ok = FcPatternGetString(m, FC_FILE, 0, &file) == FcResultMatch && file;
+    if (ok && !want_family.empty()) {
+        bool found = false;
+        FcChar8* fam = nullptr;
+        for (int i = 0; FcPatternGetString(m, FC_FAMILY, i, &fam) == FcResultMatch; ++i)
+            if (FcStrCmpIgnoreCase(fam, (const FcChar8*)want_family.c_str()) == 0) { found = true; break; }
+        if (!found) ok = false;
+    }
     if (ok) {
         *path = (const char*)file;
         int idx = 0;
@@ -257,7 +287,8 @@ Font::~Font() = default;
 bool Font::resolve_family(const std::string& family, bool bold, bool italic, std::string* path, int* index) {
     if (!FcInit()) return false;
     FcPattern* p = make_pattern(family, bold, italic);
-    bool ok = match_pattern(p, path, index, nullptr);
+    bool generic = family.empty() || family == "monospace" || family == "mono";
+    bool ok = match_pattern(p, path, index, nullptr, generic ? "" : family);
     FcPatternDestroy(p);
     return ok;
 }
@@ -316,10 +347,12 @@ bool Font::set_size(float size_px) {
     int index = 0;
     {
         FcPattern* p = make_pattern(im.family, false, false);
-        bool ok = match_pattern(p, &path, &index, &im.langs);
+        // Generic aliases (monospace, ...) legitimately resolve to another family name.
+        bool generic = im.family.empty() || im.family == "monospace" || im.family == "mono";
+        bool ok = match_pattern(p, &path, &index, &im.langs, generic ? "" : im.family);
         FcPatternDestroy(p);
         if (!ok) {
-            std::fprintf(stderr, "font: fontconfig found no match for '%s'\n", im.family.c_str());
+            std::fprintf(stderr, "font: fontconfig has no family '%s'\n", im.family.c_str());
             return false;
         }
     }
@@ -505,6 +538,11 @@ const Glyph& Font::glyph(char32_t cp, GlyphStyle style) {
     auto it = im.cache.find(key);
     if (it != im.cache.end()) return it->second;
     if (!im.styles[STYLE_REGULAR].face) return im.notdef_glyph;
+    if (is_zero_width(cp)) {
+        Glyph z;
+        z.valid = true;
+        return im.cache.emplace(key, z).first->second;
+    }
 
     FaceRef* fr = &im.styles[style & 3];
     FT_UInt gi = FT_Get_Char_Index(fr->face, cp);
@@ -537,6 +575,7 @@ const Glyph& Font::glyph(char32_t cp, GlyphStyle style) {
         FcCharSet* cs = FcCharSetCreate();
         FcCharSetAddChar(cs, cp);
         FcPatternAddCharSet(p, FC_CHARSET, cs);
+        if (is_emoji_presentation(cp)) FcPatternAddBool(p, FC_COLOR, FcTrue);   // prefer Noto Color Emoji
         if (im.langs) FcPatternAddLangSet(p, FC_LANG, im.langs);
         std::string fpath;
         int findex = 0;

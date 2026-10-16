@@ -1,7 +1,7 @@
 // vtdump: run a command under canopy::Session headlessly and dump the screen as text.
 //
 //   vtdump [-c cols] [-r rows] [-t seconds] [--blocks] [--attrs] [--keys "text"]
-//          [--keys-delay s] [--send-after s "bytes"]... [--no-integration] [--history] [-- cmd args...]
+//          [--keys-delay s] [--send-after s "bytes"]... [--resize-after s cols rows]... [--no-integration] [--history] [-- cmd args...]
 //
 // Escapes in --keys / --send-after: \r \n \t \e \\ \xHH. Without a command, the user's shell with
 // Canopy's bash integration is started (Session's default path).
@@ -70,6 +70,8 @@ int main(int argc, char** argv) {
     bool show_blocks = false, show_attrs = false, show_history = false, integration = true;
     std::string keys;
     std::vector<std::pair<double, std::string>> sends;
+    struct Resize { double at; int cols, rows; bool done = false; };
+    std::vector<Resize> resizes;
     std::vector<std::string> cmd;
     int i = 1;
     for (; i < argc; ++i) {
@@ -85,6 +87,7 @@ int main(int argc, char** argv) {
         else if (a == "--keys" && i + 1 < argc) keys = unescape(argv[++i]);
         else if (a == "--keys-delay" && i + 1 < argc) keys_delay = atof(argv[++i]);
         else if (a == "--send-after" && i + 2 < argc) { double t = atof(argv[++i]); sends.emplace_back(t, unescape(argv[++i])); }
+        else if (a == "--resize-after" && i + 3 < argc) { Resize r; r.at = atof(argv[++i]); r.cols = atoi(argv[++i]); r.rows = atoi(argv[++i]); resizes.push_back(r); }
         else if (a == "-h" || a == "--help") { fprintf(stderr, "usage: vtdump [-c cols] [-r rows] [-t seconds] [--blocks] [--attrs] [--history] [--keys text] [--keys-delay s] [--send-after s bytes] [--no-integration] [-- cmd args...]\n"); return 0; }
         else { fprintf(stderr, "vtdump: unknown option %s\n", a.c_str()); return 2; }
     }
@@ -110,6 +113,7 @@ int main(int argc, char** argv) {
         bool fed = s.pump();
         double e = elapsed();
         for (size_t k = 0; k < sends.size(); ++k) if (!sent[k] && e >= sends[k].first) { s.write(sends[k].second); sent[k] = true; }
+        for (auto& r : resizes) if (!r.done && e >= r.at) { s.resize(r.cols, r.rows); cols = r.cols; rows = r.rows; r.done = true; }
         if (!exited && !s.alive()) { exited = true; exit_at = e; }
         if (exited && !fed) {
             // drain anything still queued, then stop

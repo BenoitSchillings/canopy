@@ -237,6 +237,19 @@ vtdump/fast:
 .PHONY : vtdump/fast
 
 #=============================================================================
+# Target rules for targets named gfxdemo
+
+# Build rule for target.
+gfxdemo: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 gfxdemo
+.PHONY : gfxdemo
+
+# fast build rule for target.
+gfxdemo/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gfxdemo.dir/build.make CMakeFiles/gfxdemo.dir/build
+.PHONY : gfxdemo/fast
+
+#=============================================================================
 # Target rules for targets named test_activity
 
 # Build rule for target.
@@ -274,6 +287,19 @@ test_json: cmake_check_build_system
 test_json/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_json.dir/build.make CMakeFiles/test_json.dir/build
 .PHONY : test_json/fast
+
+#=============================================================================
+# Target rules for targets named test_structure
+
+# Build rule for target.
+test_structure: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_structure
+.PHONY : test_structure
+
+# fast build rule for target.
+test_structure/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_structure.dir/build.make CMakeFiles/test_structure.dir/build
+.PHONY : test_structure/fast
 
 src/core/activity.o: src/core/activity.cpp.o
 .PHONY : src/core/activity.o
@@ -635,6 +661,54 @@ src/gfx/window.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/canopy_gfx.dir/build.make CMakeFiles/canopy_gfx.dir/src/gfx/window.cpp.s
 .PHONY : src/gfx/window.cpp.s
 
+src/main.o: src/main.cpp.o
+.PHONY : src/main.o
+
+# target to build an object file
+src/main.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/canopy.dir/build.make CMakeFiles/canopy.dir/src/main.cpp.o
+.PHONY : src/main.cpp.o
+
+src/main.i: src/main.cpp.i
+.PHONY : src/main.i
+
+# target to preprocess a source file
+src/main.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/canopy.dir/build.make CMakeFiles/canopy.dir/src/main.cpp.i
+.PHONY : src/main.cpp.i
+
+src/main.s: src/main.cpp.s
+.PHONY : src/main.s
+
+# target to generate assembly for a file
+src/main.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/canopy.dir/build.make CMakeFiles/canopy.dir/src/main.cpp.s
+.PHONY : src/main.cpp.s
+
+src/ui/app.o: src/ui/app.cpp.o
+.PHONY : src/ui/app.o
+
+# target to build an object file
+src/ui/app.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/canopy.dir/build.make CMakeFiles/canopy.dir/src/ui/app.cpp.o
+.PHONY : src/ui/app.cpp.o
+
+src/ui/app.i: src/ui/app.cpp.i
+.PHONY : src/ui/app.i
+
+# target to preprocess a source file
+src/ui/app.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/canopy.dir/build.make CMakeFiles/canopy.dir/src/ui/app.cpp.i
+.PHONY : src/ui/app.cpp.i
+
+src/ui/app.s: src/ui/app.cpp.s
+.PHONY : src/ui/app.s
+
+# target to generate assembly for a file
+src/ui/app.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/canopy.dir/build.make CMakeFiles/canopy.dir/src/ui/app.cpp.s
+.PHONY : src/ui/app.cpp.s
+
 src/ui/canvas.o: src/ui/canvas.cpp.o
 .PHONY : src/ui/canvas.o
 
@@ -827,6 +901,54 @@ tests/test_json.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_json.dir/build.make CMakeFiles/test_json.dir/tests/test_json.cpp.s
 .PHONY : tests/test_json.cpp.s
 
+tests/test_structure.o: tests/test_structure.cpp.o
+.PHONY : tests/test_structure.o
+
+# target to build an object file
+tests/test_structure.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_structure.dir/build.make CMakeFiles/test_structure.dir/tests/test_structure.cpp.o
+.PHONY : tests/test_structure.cpp.o
+
+tests/test_structure.i: tests/test_structure.cpp.i
+.PHONY : tests/test_structure.i
+
+# target to preprocess a source file
+tests/test_structure.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_structure.dir/build.make CMakeFiles/test_structure.dir/tests/test_structure.cpp.i
+.PHONY : tests/test_structure.cpp.i
+
+tests/test_structure.s: tests/test_structure.cpp.s
+.PHONY : tests/test_structure.s
+
+# target to generate assembly for a file
+tests/test_structure.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_structure.dir/build.make CMakeFiles/test_structure.dir/tests/test_structure.cpp.s
+.PHONY : tests/test_structure.cpp.s
+
+tools/gfxdemo.o: tools/gfxdemo.cpp.o
+.PHONY : tools/gfxdemo.o
+
+# target to build an object file
+tools/gfxdemo.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gfxdemo.dir/build.make CMakeFiles/gfxdemo.dir/tools/gfxdemo.cpp.o
+.PHONY : tools/gfxdemo.cpp.o
+
+tools/gfxdemo.i: tools/gfxdemo.cpp.i
+.PHONY : tools/gfxdemo.i
+
+# target to preprocess a source file
+tools/gfxdemo.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gfxdemo.dir/build.make CMakeFiles/gfxdemo.dir/tools/gfxdemo.cpp.i
+.PHONY : tools/gfxdemo.cpp.i
+
+tools/gfxdemo.s: tools/gfxdemo.cpp.s
+.PHONY : tools/gfxdemo.s
+
+# target to generate assembly for a file
+tools/gfxdemo.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gfxdemo.dir/build.make CMakeFiles/gfxdemo.dir/tools/gfxdemo.cpp.s
+.PHONY : tools/gfxdemo.cpp.s
+
 tools/vtdump.o: tools/vtdump.cpp.o
 .PHONY : tools/vtdump.o
 
@@ -868,9 +990,11 @@ help:
 	@echo "... canopy_gfx"
 	@echo "... canopy_model"
 	@echo "... canopy_vt"
+	@echo "... gfxdemo"
 	@echo "... test_activity"
 	@echo "... test_config"
 	@echo "... test_json"
+	@echo "... test_structure"
 	@echo "... vtdump"
 	@echo "... src/core/activity.o"
 	@echo "... src/core/activity.i"
@@ -917,6 +1041,12 @@ help:
 	@echo "... src/gfx/window.o"
 	@echo "... src/gfx/window.i"
 	@echo "... src/gfx/window.s"
+	@echo "... src/main.o"
+	@echo "... src/main.i"
+	@echo "... src/main.s"
+	@echo "... src/ui/app.o"
+	@echo "... src/ui/app.i"
+	@echo "... src/ui/app.s"
 	@echo "... src/ui/canvas.o"
 	@echo "... src/ui/canvas.i"
 	@echo "... src/ui/canvas.s"
@@ -941,6 +1071,12 @@ help:
 	@echo "... tests/test_json.o"
 	@echo "... tests/test_json.i"
 	@echo "... tests/test_json.s"
+	@echo "... tests/test_structure.o"
+	@echo "... tests/test_structure.i"
+	@echo "... tests/test_structure.s"
+	@echo "... tools/gfxdemo.o"
+	@echo "... tools/gfxdemo.i"
+	@echo "... tools/gfxdemo.s"
 	@echo "... tools/vtdump.o"
 	@echo "... tools/vtdump.i"
 	@echo "... tools/vtdump.s"

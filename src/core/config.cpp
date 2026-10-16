@@ -254,9 +254,11 @@ bool Config::load(const std::string& path_in, std::string* err) {
             }
             if (!closed) warn(line_no, "unterminated quoted string");
         } else {
-            size_t hash = rest.find('#');
-            // '#' starts a comment unless it is the first char (a color value like #rrggbb).
-            if (hash != std::string::npos && hash > 0) rest = rest.substr(0, hash);
+            // A '#' preceded by whitespace starts a comment; a leading '#' is a
+            // color value (#rrggbb), so the search starts after the first char.
+            size_t hash = rest.find('#', 1);
+            while (hash != std::string::npos && rest[hash - 1] != ' ' && rest[hash - 1] != '\t') hash = rest.find('#', hash + 1);
+            if (hash != std::string::npos) rest = rest.substr(0, hash);
             value = trim(rest);
         }
 

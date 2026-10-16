@@ -114,8 +114,12 @@ set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/canopy_gfx.dir/DependInfo.cmake"
   "CMakeFiles/canopy.dir/DependInfo.cmake"
   "CMakeFiles/vtdump.dir/DependInfo.cmake"
+  "CMakeFiles/gfxdemo.dir/DependInfo.cmake"
   "CMakeFiles/test_activity.dir/DependInfo.cmake"
+  "CMakeFiles/test_blocks.dir/DependInfo.cmake"
   "CMakeFiles/test_config.dir/DependInfo.cmake"
   "CMakeFiles/test_json.dir/DependInfo.cmake"
+  "CMakeFiles/test_keys.dir/DependInfo.cmake"
   "CMakeFiles/test_structure.dir/DependInfo.cmake"
+  "CMakeFiles/test_terminal.dir/DependInfo.cmake"
   )

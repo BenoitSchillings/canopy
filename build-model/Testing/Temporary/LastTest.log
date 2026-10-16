@@ -1,0 +1,72 @@
+Start testing: Oct 15 17:58 PDT
+----------------------------------------------------------
+1/7 Testing: test_activity
+1/7 Test: test_activity
+Command: "/home/benoit/terminal/build-model/test_activity"
+Directory: /home/benoit/terminal/build-model
+"test_activity" start time: Oct 15 17:58 PDT
+Output:
+----------------------------------------------------------
+canopy: could not load /tmp/canopy_act_rP3PcD/corrupt.json: expected string key at offset 2 (line 1, column 3) (moved to /tmp/canopy_act_rP3PcD/corrupt.json.bad)
+canopy: could not load /tmp/canopy_act_rP3PcD/corrupt2.json: tree: missing activities array (moved to /tmp/canopy_act_rP3PcD/corrupt2.json.bad)
+test_activity: 131 passed, 0 failed
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"test_activity" end time: Oct 15 17:58 PDT
+"test_activity" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/7 Testing: test_config
+3/7 Test: test_config
+Command: "/home/benoit/terminal/build-model/test_config"
+Directory: /home/benoit/terminal/build-model
+"test_config" start time: Oct 15 17:58 PDT
+Output:
+----------------------------------------------------------
+test_config: 94 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_config" end time: Oct 15 17:58 PDT
+"test_config" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/7 Testing: test_json
+4/7 Test: test_json
+Command: "/home/benoit/terminal/build-model/test_json"
+Directory: /home/benoit/terminal/build-model
+"test_json" start time: Oct 15 17:58 PDT
+Output:
+----------------------------------------------------------
+test_json: 121 passed, 0 failed
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"test_json" end time: Oct 15 17:58 PDT
+"test_json" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/7 Testing: test_structure
+6/7 Test: test_structure
+Command: "/home/benoit/terminal/build-model/test_structure"
+Directory: /home/benoit/terminal/build-model
+"test_structure" start time: Oct 15 17:58 PDT
+Output:
+----------------------------------------------------------
+benchmark: scan_line 20000 lines x5 in 0.049s = 2060294 lines/s (7344 spans)
+benchmark: is_error/warning_line 5548092 lines/s (506 hits)
+benchmark: detect_table on 20000 lines: 0.087 ms (is_table=0)
+test_structure: 209 passed, 0 failed
+<end of output>
+Test time =   0.07 sec
+----------------------------------------------------------
+Test Passed.
+"test_structure" end time: Oct 15 17:58 PDT
+"test_structure" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 15 17:58 PDT

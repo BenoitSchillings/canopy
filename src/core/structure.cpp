@@ -523,11 +523,12 @@ double parse_cell_number(std::string_view s) {
         case 'g': mult = 1024.0 * 1024 * 1024; break;
         case 't': mult = 1024.0 * 1024 * 1024 * 1024; break;
         case 'p': mult = 1024.0 * 1024 * 1024 * 1024 * 1024; break;
+        case 'b': mult = 1; break;     // "0B", "512B"
         case '%': mult = 1; break;
         default: return NAN;
         }
         p++;
-        if (c != '%') {
+        if (c != '%' && lower(c) != 'b') {
             if (p < e && (s[p] == 'i' || s[p] == 'I')) p++;
             if (p < e && (s[p] == 'B' || s[p] == 'b')) p++;
         }
@@ -732,11 +733,23 @@ TableInfo detect_table(const std::vector<std::string>& lines) {
     std::vector<bool> sep(width, false);
     for (size_t p = 0; p < width; p++) sep[p] = space_count[p] >= need;
 
-    // Column starts: position 0, plus every first non-separator after a run of separators.
+    // Column starts: position 0, plus one per run of separators. Inside a run
+    // the boundary goes right after the last position that is blank in EVERY
+    // row: the tail of the run that only 80-99% of rows leave blank is the
+    // leading padding of a right-aligned column (a 5-digit size among 4-digit
+    // ones in `ls -l`) and must stay inside that column.
     std::vector<int> begins;
     begins.push_back(0);
     for (size_t p = 1; p < width; p++) {
-        if (!sep[p] && sep[p - 1]) begins.push_back((int)p);
+        if (!sep[p] && sep[p - 1]) {
+            size_t a = p - 1;
+            while (a > 0 && sep[a - 1]) a--;
+            size_t boundary = p;
+            for (size_t q = p; q > a; q--) {
+                if (space_count[q - 1] == nrows) { boundary = q; break; }
+            }
+            begins.push_back((int)boundary);
+        }
     }
     if (sep[0]) {
         // Leading gap: the first real column starts after it, but keep column 0
@@ -746,8 +759,10 @@ TableInfo detect_table(const std::vector<std::string>& lines) {
     }
     if (begins.size() < 2) return t;
 
-    // Column content presence: each column must have a non-space cell in >= 80% of rows,
+    // Column content presence: each column must have a non-space cell in >= 50% of rows,
     // otherwise it is merged into the previous one (ragged tail / spaces in filenames).
+    // (The separator before it is already blank in >= 80% of rows, so this only
+    // rejects columns that exist in a minority of rows.)
     auto column_filled = [&](size_t b, size_t e, const std::u32string& s) {
         for (size_t p = b; p < e && p < s.size(); p++) if (s[p] != U' ') return true;
         return false;
@@ -760,7 +775,7 @@ TableInfo detect_table(const std::vector<std::string>& lines) {
             size_t e = k + 1 < begins.size() ? (size_t)begins[k + 1] : width;
             size_t filled = 0;
             for (const auto& r : rows) if (column_filled(b, e, r.cps)) filled++;
-            if (filled >= need) kept.push_back(begins[k]);
+            if (filled * 2 >= nrows) kept.push_back(begins[k]);
             // else: dropped => merges into the previous column
         }
         begins = std::move(kept);

@@ -172,7 +172,7 @@ private:
     void send_mouse(const MouseEvent& ev);
     bool mouse_to_app() const;             // terminal wants mouse events
     void clamp_scroll();
-    std::vector<std::string> block_lines(const Block& b) const;
+    std::vector<std::string> block_lines(const Block& b, bool join_wrapped = true) const;
     Line make_line(const std::string& utf8, Color fg, uint16_t attrs) const;
 
     App& app_;

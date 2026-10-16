@@ -60,13 +60,15 @@ static void test_containers() {
     CHECK(j && err.empty());
     CHECK(j->is_object());
     CHECK_EQ(j->size(), (size_t)4);
-    CHECK((*j)["b"].is_array());
-    CHECK_EQ((*j)["b"].size(), (size_t)3);
-    CHECK_EQ((*j)["b"][1].as_int(), (int64_t)2);
-    CHECK((*j)["b"][2]["c"].is_null());
-    CHECK((*j)["b"][7].is_null());          // out of range -> static null
-    CHECK((*j)["missing"].is_null());       // missing key -> static null
-    CHECK((*j)["missing"]["deeper"].is_null());
+    const Json& cj = *j;                    // const access: never inserts
+    CHECK(cj["b"].is_array());
+    CHECK_EQ(cj["b"].size(), (size_t)3);
+    CHECK_EQ(cj["b"][1].as_int(), (int64_t)2);
+    CHECK(cj["b"][2]["c"].is_null());
+    CHECK(cj["b"][7].is_null());            // out of range -> static null
+    CHECK(cj["missing"].is_null());         // missing key -> static null
+    CHECK(cj["missing"]["deeper"].is_null());
+    CHECK(!cj.has("missing"));              // const lookup did not insert
     CHECK(j->has("a") && !j->has("zz"));
     // Deterministic key order (sorted)
     CHECK_EQ(j->dump(), std::string(R"({"a":"x","b":[1,2,{"c":null}],"d":{},"e":[]})"));
@@ -131,7 +133,7 @@ static void test_errors() {
     std::string err;
     Json::parse("{\n  \"a\": tru\n}", &err);
     CHECK(err.find("line 2") != std::string::npos);
-    CHECK(err.find("offset 8") != std::string::npos);
+    CHECK(err.find("offset 9") != std::string::npos);
     // Deep nesting is rejected rather than crashing
     std::string deep(100000, '[');
     CHECK(!Json::parse(deep, &err));

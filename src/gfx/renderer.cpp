@@ -11,6 +11,8 @@
 #include "shaders.h"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdlib>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -36,7 +38,7 @@ struct IRect { int x0, y0, x1, y1; };
 struct FRect { float x0, y0, x1, y1; };
 
 inline void pack_color(RGBA c, uint8_t out[4]) {
-    auto q = [](float v) { return (uint8_t)std::lround(std::clamp(v, 0.f, 1.f) * 255.f); };
+    auto q = [](float v) { return (uint8_t)(int)(std::clamp(v, 0.f, 1.f) * 255.f + 0.5f); };
     out[0] = q(c.r); out[1] = q(c.g); out[2] = q(c.b); out[3] = q(c.a);
 }
 
@@ -182,6 +184,18 @@ struct Renderer::Impl {
     bool snap = true;                   // transform scale == 1: snap glyphs/lines to pixels
     bool gl_ok = false;
 
+    GLsizeiptr vbo_offset = 0;          // ring-buffer write position (bytes)
+
+    void set_attrib_pointers(GLsizeiptr base) {
+        const GLsizei stride = sizeof(Vertex);
+        auto off = [&](size_t o) { return (const void*)(uintptr_t)(base + (GLsizeiptr)o); };
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, off(offsetof(Vertex, x)));
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, off(offsetof(Vertex, u)));
+        glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, off(offsetof(Vertex, rgba)));
+        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride, off(offsetof(Vertex, p)));
+        glVertexAttribIPointer(4, 2, GL_UNSIGNED_SHORT, stride, off(offsetof(Vertex, mode)));
+    }
+
     Vertex* alloc_quad(Renderer& r) {
         if (nq >= kMaxQuads) r.flush();
         Vertex* v = &verts[(size_t)nq * 4];
@@ -239,17 +253,8 @@ bool Renderer::init(std::string* err) {
     glBindVertexArray(im.vao);
     glBindBuffer(GL_ARRAY_BUFFER, im.vbo);
     glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(sizeof(Vertex) * 4 * kMaxQuads), nullptr, GL_STREAM_DRAW);
-    const GLsizei stride = sizeof(Vertex);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, (const void*)offsetof(Vertex, x));
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (const void*)offsetof(Vertex, u));
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (const void*)offsetof(Vertex, rgba));
-    glEnableVertexAttribArray(3);
-    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride, (const void*)offsetof(Vertex, p));
-    glEnableVertexAttribArray(4);
-    glVertexAttribIPointer(4, 2, GL_UNSIGNED_SHORT, stride, (const void*)offsetof(Vertex, mode));
+    for (int i = 0; i < 5; ++i) glEnableVertexAttribArray(i);
+    im.set_attrib_pointers(0);
 
     // Static quad index buffer.
     std::vector<uint32_t> idx((size_t)kMaxQuads * 6);
@@ -277,6 +282,7 @@ void Renderer::begin_frame(int fb_w, int fb_h, RGBA clear) {
     draw_calls_ = 0;
     quads_ = 0;
     im.nq = 0;
+    im.vbo_offset = 0;
     im.batch_tex = 0;
     im.batch_font = nullptr;
     xf_ = Transform{};
@@ -321,11 +327,24 @@ void Renderer::flush() {
         }
         glUniform2f(im.u_tex_size, (float)im.batch_tex_size, (float)im.batch_tex_size);
     }
+    // Ring-buffer upload: append at vbo_offset, orphan the whole buffer only when it wraps.
     glBindBuffer(GL_ARRAY_BUFFER, im.vbo);
+    const GLsizeiptr cap = (GLsizeiptr)(sizeof(Vertex) * 4 * kMaxQuads);
     GLsizeiptr bytes = (GLsizeiptr)(sizeof(Vertex) * 4 * (size_t)im.nq);
-    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(sizeof(Vertex) * 4 * kMaxQuads), nullptr, GL_STREAM_DRAW);   // orphan
-    glBufferSubData(GL_ARRAY_BUFFER, 0, bytes, im.verts.data());
+    if (im.vbo_offset + bytes > cap || im.vbo_offset == 0) {
+        glBufferData(GL_ARRAY_BUFFER, cap, nullptr, GL_STREAM_DRAW);   // orphan (once per frame, or on wrap)
+        im.vbo_offset = 0;
+    }
+    static const bool dbg = getenv("CANOPY_FLUSH_DEBUG") != nullptr;
+    auto t0 = std::chrono::steady_clock::now();
+    glBufferSubData(GL_ARRAY_BUFFER, im.vbo_offset, bytes, im.verts.data());
+    auto t1 = std::chrono::steady_clock::now();
+    im.set_attrib_pointers(im.vbo_offset);
     glDrawElements(GL_TRIANGLES, (GLsizei)(im.nq * 6), GL_UNSIGNED_INT, nullptr);
+    auto t2 = std::chrono::steady_clock::now();
+    if (dbg && im.nq > 10000) std::fprintf(stderr, "flush %d quads: sub %.2f ms draw %.2f ms\n", im.nq,
+        std::chrono::duration<double, std::milli>(t1 - t0).count(), std::chrono::duration<double, std::milli>(t2 - t1).count());
+    im.vbo_offset += bytes;
     ++draw_calls_;
     im.nq = 0;
 }

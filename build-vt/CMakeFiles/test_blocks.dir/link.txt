@@ -1,0 +1,1 @@
+/usr/bin/c++ -O2 -g CMakeFiles/test_blocks.dir/tests/test_blocks.cpp.o -o test_blocks  libcanopy_vt.a -lutil 

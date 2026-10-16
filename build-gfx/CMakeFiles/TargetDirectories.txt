@@ -3,9 +3,11 @@
 /home/benoit/terminal/build-gfx/CMakeFiles/canopy_gfx.dir
 /home/benoit/terminal/build-gfx/CMakeFiles/canopy.dir
 /home/benoit/terminal/build-gfx/CMakeFiles/vtdump.dir
+/home/benoit/terminal/build-gfx/CMakeFiles/gfxdemo.dir
 /home/benoit/terminal/build-gfx/CMakeFiles/test_activity.dir
 /home/benoit/terminal/build-gfx/CMakeFiles/test_config.dir
 /home/benoit/terminal/build-gfx/CMakeFiles/test_json.dir
+/home/benoit/terminal/build-gfx/CMakeFiles/test_structure.dir
 /home/benoit/terminal/build-gfx/CMakeFiles/test.dir
 /home/benoit/terminal/build-gfx/CMakeFiles/edit_cache.dir
 /home/benoit/terminal/build-gfx/CMakeFiles/rebuild_cache.dir

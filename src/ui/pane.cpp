@@ -342,7 +342,7 @@ void Pane::rerun(int idx) {
     scroll_to_bottom();
 }
 
-std::vector<std::string> Pane::block_lines(const Block& b) const {
+std::vector<std::string> Pane::block_lines(const Block& b, bool join_wrapped) const {
     std::vector<std::string> out;
     if (!session || b.output_line < 0) return out;
     const Terminal& t = session->term();
@@ -354,7 +354,7 @@ std::vector<std::string> Pane::block_lines(const Block& b) const {
     for (int64_t a = s; a < e; a++) {
         const Line& ln = t.line_abs(a);
         cur += ln.text();
-        if (ln.wrapped) continue;    // join soft-wrapped lines
+        if (ln.wrapped && join_wrapped) continue;    // join soft-wrapped lines
         out.push_back(std::move(cur)); cur.clear();
     }
     if (!cur.empty()) out.push_back(cur);
@@ -436,10 +436,16 @@ void Pane::sort_table(int idx, int col) {
     if (v.sort_col == col) {
         if (!v.sort_desc) desc = true; else { clear_sort(idx); return; }
     }
-    auto lines = block_lines(*b);
+    auto lines = block_lines(*b, false);
     auto perm = sort_rows(lines, v.table, col, desc);
     v.order.clear();
-    for (int i : perm) v.order.push_back(b->output_line + i);
+    const Terminal& t = session->term();
+    for (int i : perm) {
+        int64_t a = b->output_line + i;
+        if (i > 0 && t.line_abs(a - 1).wrapped) continue;      // continuation rows follow their first row
+        v.order.push_back(a);
+        for (int64_t q = a; q + 1 < b->end_line && t.line_abs(q).wrapped; q++) v.order.push_back(q + 1);
+    }
     v.sort_col = col; v.sort_desc = desc;
     vis_dirty_ = true;
     app_.request_redraw();

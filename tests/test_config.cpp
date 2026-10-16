@@ -160,7 +160,7 @@ static void test_load() {
     CHECK(err.find("invalid value 'notanumber'") != std::string::npos);
     CHECK(err.find("invalid value 'triangle'") != std::string::npos);
     CHECK(err.find("expected 'key = value'") != std::string::npos);
-    CHECK(err.find(":41:") != std::string::npos);   // line number of bogus_key
+    CHECK(err.find(":42:") != std::string::npos);   // line number of bogus_key
     unlink(path.c_str());
 }
 

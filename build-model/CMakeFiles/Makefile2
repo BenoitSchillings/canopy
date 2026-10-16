@@ -68,10 +68,14 @@ all: CMakeFiles/canopy_model.dir/all
 all: CMakeFiles/canopy_gfx.dir/all
 all: CMakeFiles/canopy.dir/all
 all: CMakeFiles/vtdump.dir/all
+all: CMakeFiles/gfxdemo.dir/all
 all: CMakeFiles/test_activity.dir/all
+all: CMakeFiles/test_blocks.dir/all
 all: CMakeFiles/test_config.dir/all
 all: CMakeFiles/test_json.dir/all
+all: CMakeFiles/test_keys.dir/all
 all: CMakeFiles/test_structure.dir/all
+all: CMakeFiles/test_terminal.dir/all
 .PHONY : all
 
 # The main recursive "preinstall" target.
@@ -84,10 +88,14 @@ clean: CMakeFiles/canopy_model.dir/clean
 clean: CMakeFiles/canopy_gfx.dir/clean
 clean: CMakeFiles/canopy.dir/clean
 clean: CMakeFiles/vtdump.dir/clean
+clean: CMakeFiles/gfxdemo.dir/clean
 clean: CMakeFiles/test_activity.dir/clean
+clean: CMakeFiles/test_blocks.dir/clean
 clean: CMakeFiles/test_config.dir/clean
 clean: CMakeFiles/test_json.dir/clean
+clean: CMakeFiles/test_keys.dir/clean
 clean: CMakeFiles/test_structure.dir/clean
+clean: CMakeFiles/test_terminal.dir/clean
 .PHONY : clean
 
 #=============================================================================
@@ -203,7 +211,7 @@ CMakeFiles/canopy.dir/clean:
 CMakeFiles/vtdump.dir/all: CMakeFiles/canopy_vt.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/vtdump.dir/build.make CMakeFiles/vtdump.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/vtdump.dir/build.make CMakeFiles/vtdump.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benoit/terminal/build-model/CMakeFiles --progress-num=35,36 "Built target vtdump"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benoit/terminal/build-model/CMakeFiles --progress-num=43,44 "Built target vtdump"
 .PHONY : CMakeFiles/vtdump.dir/all
 
 # Build rule for subdir invocation for target.
@@ -223,6 +231,32 @@ CMakeFiles/vtdump.dir/clean:
 .PHONY : CMakeFiles/vtdump.dir/clean
 
 #=============================================================================
+# Target rules for target CMakeFiles/gfxdemo.dir
+
+# All Build rule for target.
+CMakeFiles/gfxdemo.dir/all: CMakeFiles/canopy_gfx.dir/all
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gfxdemo.dir/build.make CMakeFiles/gfxdemo.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gfxdemo.dir/build.make CMakeFiles/gfxdemo.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benoit/terminal/build-model/CMakeFiles --progress-num=27,28 "Built target gfxdemo"
+.PHONY : CMakeFiles/gfxdemo.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/gfxdemo.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/benoit/terminal/build-model/CMakeFiles 7
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/gfxdemo.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/benoit/terminal/build-model/CMakeFiles 0
+.PHONY : CMakeFiles/gfxdemo.dir/rule
+
+# Convenience name for target.
+gfxdemo: CMakeFiles/gfxdemo.dir/rule
+.PHONY : gfxdemo
+
+# clean rule for target.
+CMakeFiles/gfxdemo.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gfxdemo.dir/build.make CMakeFiles/gfxdemo.dir/clean
+.PHONY : CMakeFiles/gfxdemo.dir/clean
+
+#=============================================================================
 # Target rules for target CMakeFiles/test_activity.dir
 
 # All Build rule for target.
@@ -230,7 +264,7 @@ CMakeFiles/test_activity.dir/all: CMakeFiles/canopy_vt.dir/all
 CMakeFiles/test_activity.dir/all: CMakeFiles/canopy_model.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_activity.dir/build.make CMakeFiles/test_activity.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_activity.dir/build.make CMakeFiles/test_activity.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benoit/terminal/build-model/CMakeFiles --progress-num=27,28 "Built target test_activity"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benoit/terminal/build-model/CMakeFiles --progress-num=29,30 "Built target test_activity"
 .PHONY : CMakeFiles/test_activity.dir/all
 
 # Build rule for subdir invocation for target.
@@ -250,6 +284,32 @@ CMakeFiles/test_activity.dir/clean:
 .PHONY : CMakeFiles/test_activity.dir/clean
 
 #=============================================================================
+# Target rules for target CMakeFiles/test_blocks.dir
+
+# All Build rule for target.
+CMakeFiles/test_blocks.dir/all: CMakeFiles/canopy_vt.dir/all
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_blocks.dir/build.make CMakeFiles/test_blocks.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_blocks.dir/build.make CMakeFiles/test_blocks.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benoit/terminal/build-model/CMakeFiles --progress-num=31,32 "Built target test_blocks"
+.PHONY : CMakeFiles/test_blocks.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/test_blocks.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/benoit/terminal/build-model/CMakeFiles 10
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_blocks.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/benoit/terminal/build-model/CMakeFiles 0
+.PHONY : CMakeFiles/test_blocks.dir/rule
+
+# Convenience name for target.
+test_blocks: CMakeFiles/test_blocks.dir/rule
+.PHONY : test_blocks
+
+# clean rule for target.
+CMakeFiles/test_blocks.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_blocks.dir/build.make CMakeFiles/test_blocks.dir/clean
+.PHONY : CMakeFiles/test_blocks.dir/clean
+
+#=============================================================================
 # Target rules for target CMakeFiles/test_config.dir
 
 # All Build rule for target.
@@ -257,7 +317,7 @@ CMakeFiles/test_config.dir/all: CMakeFiles/canopy_vt.dir/all
 CMakeFiles/test_config.dir/all: CMakeFiles/canopy_model.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_config.dir/build.make CMakeFiles/test_config.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_config.dir/build.make CMakeFiles/test_config.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benoit/terminal/build-model/CMakeFiles --progress-num=29,30 "Built target test_config"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benoit/terminal/build-model/CMakeFiles --progress-num=33,34 "Built target test_config"
 .PHONY : CMakeFiles/test_config.dir/all
 
 # Build rule for subdir invocation for target.
@@ -284,7 +344,7 @@ CMakeFiles/test_json.dir/all: CMakeFiles/canopy_vt.dir/all
 CMakeFiles/test_json.dir/all: CMakeFiles/canopy_model.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_json.dir/build.make CMakeFiles/test_json.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_json.dir/build.make CMakeFiles/test_json.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benoit/terminal/build-model/CMakeFiles --progress-num=31,32 "Built target test_json"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benoit/terminal/build-model/CMakeFiles --progress-num=35,36 "Built target test_json"
 .PHONY : CMakeFiles/test_json.dir/all
 
 # Build rule for subdir invocation for target.
@@ -304,6 +364,32 @@ CMakeFiles/test_json.dir/clean:
 .PHONY : CMakeFiles/test_json.dir/clean
 
 #=============================================================================
+# Target rules for target CMakeFiles/test_keys.dir
+
+# All Build rule for target.
+CMakeFiles/test_keys.dir/all: CMakeFiles/canopy_vt.dir/all
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_keys.dir/build.make CMakeFiles/test_keys.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_keys.dir/build.make CMakeFiles/test_keys.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benoit/terminal/build-model/CMakeFiles --progress-num=37,38 "Built target test_keys"
+.PHONY : CMakeFiles/test_keys.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/test_keys.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/benoit/terminal/build-model/CMakeFiles 10
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_keys.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/benoit/terminal/build-model/CMakeFiles 0
+.PHONY : CMakeFiles/test_keys.dir/rule
+
+# Convenience name for target.
+test_keys: CMakeFiles/test_keys.dir/rule
+.PHONY : test_keys
+
+# clean rule for target.
+CMakeFiles/test_keys.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_keys.dir/build.make CMakeFiles/test_keys.dir/clean
+.PHONY : CMakeFiles/test_keys.dir/clean
+
+#=============================================================================
 # Target rules for target CMakeFiles/test_structure.dir
 
 # All Build rule for target.
@@ -311,7 +397,7 @@ CMakeFiles/test_structure.dir/all: CMakeFiles/canopy_vt.dir/all
 CMakeFiles/test_structure.dir/all: CMakeFiles/canopy_model.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_structure.dir/build.make CMakeFiles/test_structure.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_structure.dir/build.make CMakeFiles/test_structure.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benoit/terminal/build-model/CMakeFiles --progress-num=33,34 "Built target test_structure"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benoit/terminal/build-model/CMakeFiles --progress-num=39,40 "Built target test_structure"
 .PHONY : CMakeFiles/test_structure.dir/all
 
 # Build rule for subdir invocation for target.
@@ -329,6 +415,32 @@ test_structure: CMakeFiles/test_structure.dir/rule
 CMakeFiles/test_structure.dir/clean:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_structure.dir/build.make CMakeFiles/test_structure.dir/clean
 .PHONY : CMakeFiles/test_structure.dir/clean
+
+#=============================================================================
+# Target rules for target CMakeFiles/test_terminal.dir
+
+# All Build rule for target.
+CMakeFiles/test_terminal.dir/all: CMakeFiles/canopy_vt.dir/all
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_terminal.dir/build.make CMakeFiles/test_terminal.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_terminal.dir/build.make CMakeFiles/test_terminal.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/benoit/terminal/build-model/CMakeFiles --progress-num=41,42 "Built target test_terminal"
+.PHONY : CMakeFiles/test_terminal.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/test_terminal.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/benoit/terminal/build-model/CMakeFiles 10
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_terminal.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/benoit/terminal/build-model/CMakeFiles 0
+.PHONY : CMakeFiles/test_terminal.dir/rule
+
+# Convenience name for target.
+test_terminal: CMakeFiles/test_terminal.dir/rule
+.PHONY : test_terminal
+
+# clean rule for target.
+CMakeFiles/test_terminal.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_terminal.dir/build.make CMakeFiles/test_terminal.dir/clean
+.PHONY : CMakeFiles/test_terminal.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

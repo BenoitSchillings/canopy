@@ -237,6 +237,19 @@ vtdump/fast:
 .PHONY : vtdump/fast
 
 #=============================================================================
+# Target rules for targets named gfxdemo
+
+# Build rule for target.
+gfxdemo: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 gfxdemo
+.PHONY : gfxdemo
+
+# fast build rule for target.
+gfxdemo/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gfxdemo.dir/build.make CMakeFiles/gfxdemo.dir/build
+.PHONY : gfxdemo/fast
+
+#=============================================================================
 # Target rules for targets named test_activity
 
 # Build rule for target.
@@ -248,6 +261,19 @@ test_activity: cmake_check_build_system
 test_activity/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_activity.dir/build.make CMakeFiles/test_activity.dir/build
 .PHONY : test_activity/fast
+
+#=============================================================================
+# Target rules for targets named test_blocks
+
+# Build rule for target.
+test_blocks: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_blocks
+.PHONY : test_blocks
+
+# fast build rule for target.
+test_blocks/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_blocks.dir/build.make CMakeFiles/test_blocks.dir/build
+.PHONY : test_blocks/fast
 
 #=============================================================================
 # Target rules for targets named test_config
@@ -276,6 +302,19 @@ test_json/fast:
 .PHONY : test_json/fast
 
 #=============================================================================
+# Target rules for targets named test_keys
+
+# Build rule for target.
+test_keys: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_keys
+.PHONY : test_keys
+
+# fast build rule for target.
+test_keys/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_keys.dir/build.make CMakeFiles/test_keys.dir/build
+.PHONY : test_keys/fast
+
+#=============================================================================
 # Target rules for targets named test_structure
 
 # Build rule for target.
@@ -287,6 +326,19 @@ test_structure: cmake_check_build_system
 test_structure/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_structure.dir/build.make CMakeFiles/test_structure.dir/build
 .PHONY : test_structure/fast
+
+#=============================================================================
+# Target rules for targets named test_terminal
+
+# Build rule for target.
+test_terminal: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_terminal
+.PHONY : test_terminal
+
+# fast build rule for target.
+test_terminal/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_terminal.dir/build.make CMakeFiles/test_terminal.dir/build
+.PHONY : test_terminal/fast
 
 src/core/activity.o: src/core/activity.cpp.o
 .PHONY : src/core/activity.o
@@ -840,6 +892,30 @@ tests/test_activity.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_activity.dir/build.make CMakeFiles/test_activity.dir/tests/test_activity.cpp.s
 .PHONY : tests/test_activity.cpp.s
 
+tests/test_blocks.o: tests/test_blocks.cpp.o
+.PHONY : tests/test_blocks.o
+
+# target to build an object file
+tests/test_blocks.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_blocks.dir/build.make CMakeFiles/test_blocks.dir/tests/test_blocks.cpp.o
+.PHONY : tests/test_blocks.cpp.o
+
+tests/test_blocks.i: tests/test_blocks.cpp.i
+.PHONY : tests/test_blocks.i
+
+# target to preprocess a source file
+tests/test_blocks.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_blocks.dir/build.make CMakeFiles/test_blocks.dir/tests/test_blocks.cpp.i
+.PHONY : tests/test_blocks.cpp.i
+
+tests/test_blocks.s: tests/test_blocks.cpp.s
+.PHONY : tests/test_blocks.s
+
+# target to generate assembly for a file
+tests/test_blocks.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_blocks.dir/build.make CMakeFiles/test_blocks.dir/tests/test_blocks.cpp.s
+.PHONY : tests/test_blocks.cpp.s
+
 tests/test_config.o: tests/test_config.cpp.o
 .PHONY : tests/test_config.o
 
@@ -888,6 +964,30 @@ tests/test_json.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_json.dir/build.make CMakeFiles/test_json.dir/tests/test_json.cpp.s
 .PHONY : tests/test_json.cpp.s
 
+tests/test_keys.o: tests/test_keys.cpp.o
+.PHONY : tests/test_keys.o
+
+# target to build an object file
+tests/test_keys.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_keys.dir/build.make CMakeFiles/test_keys.dir/tests/test_keys.cpp.o
+.PHONY : tests/test_keys.cpp.o
+
+tests/test_keys.i: tests/test_keys.cpp.i
+.PHONY : tests/test_keys.i
+
+# target to preprocess a source file
+tests/test_keys.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_keys.dir/build.make CMakeFiles/test_keys.dir/tests/test_keys.cpp.i
+.PHONY : tests/test_keys.cpp.i
+
+tests/test_keys.s: tests/test_keys.cpp.s
+.PHONY : tests/test_keys.s
+
+# target to generate assembly for a file
+tests/test_keys.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_keys.dir/build.make CMakeFiles/test_keys.dir/tests/test_keys.cpp.s
+.PHONY : tests/test_keys.cpp.s
+
 tests/test_structure.o: tests/test_structure.cpp.o
 .PHONY : tests/test_structure.o
 
@@ -911,6 +1011,54 @@ tests/test_structure.s: tests/test_structure.cpp.s
 tests/test_structure.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_structure.dir/build.make CMakeFiles/test_structure.dir/tests/test_structure.cpp.s
 .PHONY : tests/test_structure.cpp.s
+
+tests/test_terminal.o: tests/test_terminal.cpp.o
+.PHONY : tests/test_terminal.o
+
+# target to build an object file
+tests/test_terminal.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_terminal.dir/build.make CMakeFiles/test_terminal.dir/tests/test_terminal.cpp.o
+.PHONY : tests/test_terminal.cpp.o
+
+tests/test_terminal.i: tests/test_terminal.cpp.i
+.PHONY : tests/test_terminal.i
+
+# target to preprocess a source file
+tests/test_terminal.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_terminal.dir/build.make CMakeFiles/test_terminal.dir/tests/test_terminal.cpp.i
+.PHONY : tests/test_terminal.cpp.i
+
+tests/test_terminal.s: tests/test_terminal.cpp.s
+.PHONY : tests/test_terminal.s
+
+# target to generate assembly for a file
+tests/test_terminal.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_terminal.dir/build.make CMakeFiles/test_terminal.dir/tests/test_terminal.cpp.s
+.PHONY : tests/test_terminal.cpp.s
+
+tools/gfxdemo.o: tools/gfxdemo.cpp.o
+.PHONY : tools/gfxdemo.o
+
+# target to build an object file
+tools/gfxdemo.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gfxdemo.dir/build.make CMakeFiles/gfxdemo.dir/tools/gfxdemo.cpp.o
+.PHONY : tools/gfxdemo.cpp.o
+
+tools/gfxdemo.i: tools/gfxdemo.cpp.i
+.PHONY : tools/gfxdemo.i
+
+# target to preprocess a source file
+tools/gfxdemo.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gfxdemo.dir/build.make CMakeFiles/gfxdemo.dir/tools/gfxdemo.cpp.i
+.PHONY : tools/gfxdemo.cpp.i
+
+tools/gfxdemo.s: tools/gfxdemo.cpp.s
+.PHONY : tools/gfxdemo.s
+
+# target to generate assembly for a file
+tools/gfxdemo.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/gfxdemo.dir/build.make CMakeFiles/gfxdemo.dir/tools/gfxdemo.cpp.s
+.PHONY : tools/gfxdemo.cpp.s
 
 tools/vtdump.o: tools/vtdump.cpp.o
 .PHONY : tools/vtdump.o
@@ -953,10 +1101,14 @@ help:
 	@echo "... canopy_gfx"
 	@echo "... canopy_model"
 	@echo "... canopy_vt"
+	@echo "... gfxdemo"
 	@echo "... test_activity"
+	@echo "... test_blocks"
 	@echo "... test_config"
 	@echo "... test_json"
+	@echo "... test_keys"
 	@echo "... test_structure"
+	@echo "... test_terminal"
 	@echo "... vtdump"
 	@echo "... src/core/activity.o"
 	@echo "... src/core/activity.i"
@@ -1027,15 +1179,27 @@ help:
 	@echo "... tests/test_activity.o"
 	@echo "... tests/test_activity.i"
 	@echo "... tests/test_activity.s"
+	@echo "... tests/test_blocks.o"
+	@echo "... tests/test_blocks.i"
+	@echo "... tests/test_blocks.s"
 	@echo "... tests/test_config.o"
 	@echo "... tests/test_config.i"
 	@echo "... tests/test_config.s"
 	@echo "... tests/test_json.o"
 	@echo "... tests/test_json.i"
 	@echo "... tests/test_json.s"
+	@echo "... tests/test_keys.o"
+	@echo "... tests/test_keys.i"
+	@echo "... tests/test_keys.s"
 	@echo "... tests/test_structure.o"
 	@echo "... tests/test_structure.i"
 	@echo "... tests/test_structure.s"
+	@echo "... tests/test_terminal.o"
+	@echo "... tests/test_terminal.i"
+	@echo "... tests/test_terminal.s"
+	@echo "... tools/gfxdemo.o"
+	@echo "... tools/gfxdemo.i"
+	@echo "... tools/gfxdemo.s"
 	@echo "... tools/vtdump.o"
 	@echo "... tools/vtdump.i"
 	@echo "... tools/vtdump.s"

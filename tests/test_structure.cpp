@@ -473,7 +473,7 @@ static void test_tables() {
             auto asc = sort_rows(lines, t, 4, false);
             CHECK(asc[0] == 8);
             // stable: the 4096 directories keep their original order
-            CHECK(asc[1] == 1 && asc[2] == 4 && asc[3] == 6 && asc[4] == 7);
+            CHECK(asc[1] == 2 && asc[2] == 1 && asc[3] == 4 && asc[4] == 6 && asc[5] == 7);
             // sort by name, case-insensitive
             auto byname = sort_rows(lines, t, (int)t.col_begins.size() - 1, false);
             CHECK(byname[0] == 1);                 // build

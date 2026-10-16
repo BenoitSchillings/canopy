@@ -69,10 +69,38 @@ include CMakeFiles/canopy.dir/progress.make
 # Include the compile flags for this target's objects.
 include CMakeFiles/canopy.dir/flags.make
 
+CMakeFiles/canopy.dir/src/main.cpp.o: CMakeFiles/canopy.dir/flags.make
+CMakeFiles/canopy.dir/src/main.cpp.o: /home/benoit/terminal/src/main.cpp
+CMakeFiles/canopy.dir/src/main.cpp.o: CMakeFiles/canopy.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benoit/terminal/build-vt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/canopy.dir/src/main.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/canopy.dir/src/main.cpp.o -MF CMakeFiles/canopy.dir/src/main.cpp.o.d -o CMakeFiles/canopy.dir/src/main.cpp.o -c /home/benoit/terminal/src/main.cpp
+
+CMakeFiles/canopy.dir/src/main.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/canopy.dir/src/main.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/benoit/terminal/src/main.cpp > CMakeFiles/canopy.dir/src/main.cpp.i
+
+CMakeFiles/canopy.dir/src/main.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/canopy.dir/src/main.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/benoit/terminal/src/main.cpp -o CMakeFiles/canopy.dir/src/main.cpp.s
+
+CMakeFiles/canopy.dir/src/ui/app.cpp.o: CMakeFiles/canopy.dir/flags.make
+CMakeFiles/canopy.dir/src/ui/app.cpp.o: /home/benoit/terminal/src/ui/app.cpp
+CMakeFiles/canopy.dir/src/ui/app.cpp.o: CMakeFiles/canopy.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benoit/terminal/build-vt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/canopy.dir/src/ui/app.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/canopy.dir/src/ui/app.cpp.o -MF CMakeFiles/canopy.dir/src/ui/app.cpp.o.d -o CMakeFiles/canopy.dir/src/ui/app.cpp.o -c /home/benoit/terminal/src/ui/app.cpp
+
+CMakeFiles/canopy.dir/src/ui/app.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/canopy.dir/src/ui/app.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/benoit/terminal/src/ui/app.cpp > CMakeFiles/canopy.dir/src/ui/app.cpp.i
+
+CMakeFiles/canopy.dir/src/ui/app.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/canopy.dir/src/ui/app.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/benoit/terminal/src/ui/app.cpp -o CMakeFiles/canopy.dir/src/ui/app.cpp.s
+
 CMakeFiles/canopy.dir/src/ui/canvas.cpp.o: CMakeFiles/canopy.dir/flags.make
 CMakeFiles/canopy.dir/src/ui/canvas.cpp.o: /home/benoit/terminal/src/ui/canvas.cpp
 CMakeFiles/canopy.dir/src/ui/canvas.cpp.o: CMakeFiles/canopy.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benoit/terminal/build-vt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/canopy.dir/src/ui/canvas.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benoit/terminal/build-vt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/canopy.dir/src/ui/canvas.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/canopy.dir/src/ui/canvas.cpp.o -MF CMakeFiles/canopy.dir/src/ui/canvas.cpp.o.d -o CMakeFiles/canopy.dir/src/ui/canvas.cpp.o -c /home/benoit/terminal/src/ui/canvas.cpp
 
 CMakeFiles/canopy.dir/src/ui/canvas.cpp.i: cmake_force
@@ -86,7 +114,7 @@ CMakeFiles/canopy.dir/src/ui/canvas.cpp.s: cmake_force
 CMakeFiles/canopy.dir/src/ui/common.cpp.o: CMakeFiles/canopy.dir/flags.make
 CMakeFiles/canopy.dir/src/ui/common.cpp.o: /home/benoit/terminal/src/ui/common.cpp
 CMakeFiles/canopy.dir/src/ui/common.cpp.o: CMakeFiles/canopy.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benoit/terminal/build-vt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/canopy.dir/src/ui/common.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benoit/terminal/build-vt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/canopy.dir/src/ui/common.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/canopy.dir/src/ui/common.cpp.o -MF CMakeFiles/canopy.dir/src/ui/common.cpp.o.d -o CMakeFiles/canopy.dir/src/ui/common.cpp.o -c /home/benoit/terminal/src/ui/common.cpp
 
 CMakeFiles/canopy.dir/src/ui/common.cpp.i: cmake_force
@@ -97,10 +125,24 @@ CMakeFiles/canopy.dir/src/ui/common.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/canopy.dir/src/ui/common.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/benoit/terminal/src/ui/common.cpp -o CMakeFiles/canopy.dir/src/ui/common.cpp.s
 
+CMakeFiles/canopy.dir/src/ui/overlay.cpp.o: CMakeFiles/canopy.dir/flags.make
+CMakeFiles/canopy.dir/src/ui/overlay.cpp.o: /home/benoit/terminal/src/ui/overlay.cpp
+CMakeFiles/canopy.dir/src/ui/overlay.cpp.o: CMakeFiles/canopy.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benoit/terminal/build-vt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/canopy.dir/src/ui/overlay.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/canopy.dir/src/ui/overlay.cpp.o -MF CMakeFiles/canopy.dir/src/ui/overlay.cpp.o.d -o CMakeFiles/canopy.dir/src/ui/overlay.cpp.o -c /home/benoit/terminal/src/ui/overlay.cpp
+
+CMakeFiles/canopy.dir/src/ui/overlay.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/canopy.dir/src/ui/overlay.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/benoit/terminal/src/ui/overlay.cpp > CMakeFiles/canopy.dir/src/ui/overlay.cpp.i
+
+CMakeFiles/canopy.dir/src/ui/overlay.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/canopy.dir/src/ui/overlay.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/benoit/terminal/src/ui/overlay.cpp -o CMakeFiles/canopy.dir/src/ui/overlay.cpp.s
+
 CMakeFiles/canopy.dir/src/ui/pane.cpp.o: CMakeFiles/canopy.dir/flags.make
 CMakeFiles/canopy.dir/src/ui/pane.cpp.o: /home/benoit/terminal/src/ui/pane.cpp
 CMakeFiles/canopy.dir/src/ui/pane.cpp.o: CMakeFiles/canopy.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benoit/terminal/build-vt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/canopy.dir/src/ui/pane.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benoit/terminal/build-vt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object CMakeFiles/canopy.dir/src/ui/pane.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/canopy.dir/src/ui/pane.cpp.o -MF CMakeFiles/canopy.dir/src/ui/pane.cpp.o.d -o CMakeFiles/canopy.dir/src/ui/pane.cpp.o -c /home/benoit/terminal/src/ui/pane.cpp
 
 CMakeFiles/canopy.dir/src/ui/pane.cpp.i: cmake_force
@@ -111,18 +153,40 @@ CMakeFiles/canopy.dir/src/ui/pane.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/canopy.dir/src/ui/pane.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/benoit/terminal/src/ui/pane.cpp -o CMakeFiles/canopy.dir/src/ui/pane.cpp.s
 
+CMakeFiles/canopy.dir/src/ui/sidebar.cpp.o: CMakeFiles/canopy.dir/flags.make
+CMakeFiles/canopy.dir/src/ui/sidebar.cpp.o: /home/benoit/terminal/src/ui/sidebar.cpp
+CMakeFiles/canopy.dir/src/ui/sidebar.cpp.o: CMakeFiles/canopy.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/benoit/terminal/build-vt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object CMakeFiles/canopy.dir/src/ui/sidebar.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/canopy.dir/src/ui/sidebar.cpp.o -MF CMakeFiles/canopy.dir/src/ui/sidebar.cpp.o.d -o CMakeFiles/canopy.dir/src/ui/sidebar.cpp.o -c /home/benoit/terminal/src/ui/sidebar.cpp
+
+CMakeFiles/canopy.dir/src/ui/sidebar.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/canopy.dir/src/ui/sidebar.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/benoit/terminal/src/ui/sidebar.cpp > CMakeFiles/canopy.dir/src/ui/sidebar.cpp.i
+
+CMakeFiles/canopy.dir/src/ui/sidebar.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/canopy.dir/src/ui/sidebar.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/benoit/terminal/src/ui/sidebar.cpp -o CMakeFiles/canopy.dir/src/ui/sidebar.cpp.s
+
 # Object files for target canopy
 canopy_OBJECTS = \
+"CMakeFiles/canopy.dir/src/main.cpp.o" \
+"CMakeFiles/canopy.dir/src/ui/app.cpp.o" \
 "CMakeFiles/canopy.dir/src/ui/canvas.cpp.o" \
 "CMakeFiles/canopy.dir/src/ui/common.cpp.o" \
-"CMakeFiles/canopy.dir/src/ui/pane.cpp.o"
+"CMakeFiles/canopy.dir/src/ui/overlay.cpp.o" \
+"CMakeFiles/canopy.dir/src/ui/pane.cpp.o" \
+"CMakeFiles/canopy.dir/src/ui/sidebar.cpp.o"
 
 # External object files for target canopy
 canopy_EXTERNAL_OBJECTS =
 
+canopy: CMakeFiles/canopy.dir/src/main.cpp.o
+canopy: CMakeFiles/canopy.dir/src/ui/app.cpp.o
 canopy: CMakeFiles/canopy.dir/src/ui/canvas.cpp.o
 canopy: CMakeFiles/canopy.dir/src/ui/common.cpp.o
+canopy: CMakeFiles/canopy.dir/src/ui/overlay.cpp.o
 canopy: CMakeFiles/canopy.dir/src/ui/pane.cpp.o
+canopy: CMakeFiles/canopy.dir/src/ui/sidebar.cpp.o
 canopy: CMakeFiles/canopy.dir/build.make
 canopy: libcanopy_gfx.a
 canopy: /usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0
@@ -132,7 +196,7 @@ canopy: /usr/lib/x86_64-linux-gnu/libfontconfig.so.1
 canopy: libcanopy_vt.a
 canopy: libcanopy_model.a
 canopy: CMakeFiles/canopy.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/benoit/terminal/build-vt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Linking CXX executable canopy"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/benoit/terminal/build-vt/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Linking CXX executable canopy"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/canopy.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.

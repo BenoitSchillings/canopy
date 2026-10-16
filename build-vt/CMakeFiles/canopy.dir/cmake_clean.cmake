@@ -1,10 +1,18 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/canopy.dir/src/main.cpp.o"
+  "CMakeFiles/canopy.dir/src/main.cpp.o.d"
+  "CMakeFiles/canopy.dir/src/ui/app.cpp.o"
+  "CMakeFiles/canopy.dir/src/ui/app.cpp.o.d"
   "CMakeFiles/canopy.dir/src/ui/canvas.cpp.o"
   "CMakeFiles/canopy.dir/src/ui/canvas.cpp.o.d"
   "CMakeFiles/canopy.dir/src/ui/common.cpp.o"
   "CMakeFiles/canopy.dir/src/ui/common.cpp.o.d"
+  "CMakeFiles/canopy.dir/src/ui/overlay.cpp.o"
+  "CMakeFiles/canopy.dir/src/ui/overlay.cpp.o.d"
   "CMakeFiles/canopy.dir/src/ui/pane.cpp.o"
   "CMakeFiles/canopy.dir/src/ui/pane.cpp.o.d"
+  "CMakeFiles/canopy.dir/src/ui/sidebar.cpp.o"
+  "CMakeFiles/canopy.dir/src/ui/sidebar.cpp.o.d"
   "canopy"
   "canopy.pdb"
 )
