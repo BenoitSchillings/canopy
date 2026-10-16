@@ -65,6 +65,12 @@ bool App::init(int argc, char** argv, std::string* err) {
     sidebar_->visible = cfg_.sidebar_visible;
     sidebar_->width = (float)cfg_.sidebar_width * window_->dpi_scale();
     setup_actions();
+    {
+        float W = (float)window_->fb_width(), H = (float)window_->fb_height();
+        float sw = sidebar_->visible ? sidebar_->width : 0.f;
+        sidebar_->rect = {0, 0, sw, H};
+        canvas_->viewport = {sw, 0, W - sw, H};
+    }
     restore_tree();
     start_time_ = now();
     last_save_ = start_time_;
@@ -283,7 +289,8 @@ void App::save_state() {
         if (!a) continue;
         Pane& p = *kv.second;
         a->blocks = p.export_blocks(60, 200);
-        a->x = p.x; a->y = p.y; a->cols = p.cols; a->rows = p.rows;
+        if (!a->auto_place) { a->x = p.x; a->y = p.y; }
+        a->cols = p.cols; a->rows = p.rows;
         if (p.session) a->cwd = p.cwd();
     }
     if (!tree_.save()) fprintf(stderr, "canopy: failed to save activity tree\n");

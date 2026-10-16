@@ -194,6 +194,17 @@ void Pane::rebuild_vis() {
                 if (special) ranges.push_back({b.output_line, b.end_line, (int)i});
             }
             int64_t base = t.history_base(), end = t.screen_base() + t.rows();
+            if (!restored_.empty() && t.history_count() == 0) {
+                // fresh shell under restored history: don't let blank screen rows push the history away
+                int last = t.cursor().y;
+                for (int y = t.rows() - 1; y > last; y--) {
+                    const Line& ln = t.row(y);
+                    bool blank = true;
+                    for (const Cell& c : ln.cells) if (!c.is_blank() || c.bg.kind != Color::Default) { blank = false; break; }
+                    if (!blank) { last = y; break; }
+                }
+                end = t.screen_base() + last + 1;
+            }
             size_t ri = 0; int bj = -1; int n = (int)bl.size();
             vis_.reserve(vis_.size() + (size_t)(end - base));
             for (int64_t a = base; a < end; a++) {
@@ -959,11 +970,29 @@ void Pane::draw(Renderer& r, Font& font, const DrawCtx& ctx) {
     }
     draw_gutter(r, font, ctx, (int)top_, count);
     if (s >= 0.45f) {
+        // chips: on the command row if there is room at the right edge, else on the last output row
+        int chip_cols = 16;
+        auto row_free = [&](int i) {
+            const VisRow& vr = v[top_ + i];
+            const Line* ln = vr.kind == VisRow::Summary ? nullptr : line_for(vr);
+            if (!ln) return vr.kind == VisRow::Summary ? false : true;
+            for (int c = std::max(0, cols - chip_cols); c < std::min(cols, ln->width()); c++)
+                if (!ln->cells[c].is_blank()) return false;
+            return true;
+        };
         for (int i = 0; i < count; i++) {
             const VisRow& vr = v[top_ + i];
             if (vr.kind != VisRow::Term || vr.block < 0) continue;
             const Block* b = block(vr.block);
-            if (b && b->cmd_line == vr.abs && (b->state == BlockState::Running || b->state == BlockState::Done)) draw_chip(r, font, ctx, *b, T.y + i * cell_h());
+            if (!b || b->cmd_line != vr.abs || (b->state != BlockState::Running && b->state != BlockState::Done)) continue;
+            int pick = -1;
+            if (row_free(i)) pick = i;
+            else {
+                int j = i;
+                while (j + 1 < count && v[top_ + j + 1].block == vr.block && v[top_ + j + 1].kind != VisRow::Summary) j++;
+                for (int k = i + 1; k <= j; k++) if (row_free(k)) { pick = k; break; }
+            }
+            if (pick >= 0) draw_chip(r, font, ctx, *b, T.y + pick * cell_h());
         }
     }
     draw_cursor(r, ctx);
