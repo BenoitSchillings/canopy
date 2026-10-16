@@ -24,7 +24,7 @@ static std::string tmpfile_with(const std::string& text) {
 
 static void test_defaults() {
     Config c;
-    CHECK(c.font_family == "Source Code Pro");
+    CHECK(c.font_family == "DejaVu Sans Mono");
     CHECK(c.font_size_px == 15.0f);
     CHECK(c.default_cols == 110 && c.default_rows == 32);
     CHECK(c.scrollback == 20000);
