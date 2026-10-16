@@ -335,6 +335,10 @@ static void test_text_extraction() {
     t3.word_at(0, 5, &cb, &ce); CHECK_EQ(cb, 0); CHECK_EQ(ce, 15);
     t3.word_at(0, 16, &cb, &ce); CHECK_EQ(cb, 16); CHECK_EQ(ce, 17);  // '(' is a single delimiter
     t3.word_at(0, 15, &cb, &ce); CHECK_EQ(cb, 15); CHECK_EQ(ce, 16);  // space run
+    // a wrapped line that is later rewritten with an explicit newline is no longer joined
+    Terminal t4(5, 3, 10);
+    t4.feed("abcdefg\x1b[1;1Hxy\x1b[K\r\nz");
+    CHECK(!t4.row(0).wrapped); CHECK_EQ(t4.text(0, 0, 1, 1), "xy\nz");
     // Line::text with wide + combining
     Terminal w(10, 1);
     w.feed("\xe4\xb8\xad" "e\xcc\x81  ");

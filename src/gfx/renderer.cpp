@@ -22,6 +22,7 @@ namespace canopy::gfx {
 namespace {
 
 constexpr int kMaxQuads = 1 << 16;   // per flush; 40 B * 4 verts * 65536 = 10.5 MB VBO
+constexpr int kVboRing = 3;          // frames in flight before a VBO is rewritten
 
 struct Vertex {
     float x, y;
@@ -169,7 +170,9 @@ struct Renderer::Impl {
     }
 
 
-    GLuint vao = 0, vbo = 0, ibo = 0, prog = 0;
+    GLuint vao = 0, ibo = 0, prog = 0;
+    GLuint vbos[kVboRing] = {};
+    int vbo_index = 0;
     GLint u_viewport = -1, u_tex = -1, u_tex_size = -1, u_gamma = -1;
     std::vector<Vertex> verts;
     int nq = 0;                         // quads in the pending batch
@@ -209,7 +212,7 @@ Renderer::Renderer() : impl_(new Impl) {}
 Renderer::~Renderer() {
     Impl& im = *impl_;
     if (im.gl_ok && glDeleteBuffers) {
-        if (im.vbo) glDeleteBuffers(1, &im.vbo);
+        glDeleteBuffers(kVboRing, im.vbos);
         if (im.ibo) glDeleteBuffers(1, &im.ibo);
         if (im.vao) glDeleteVertexArrays(1, &im.vao);
         if (im.prog) glDeleteProgram(im.prog);
@@ -248,11 +251,13 @@ bool Renderer::init(std::string* err) {
     im.u_gamma = glGetUniformLocation(im.prog, "u_gamma");
 
     glGenVertexArrays(1, &im.vao);
-    glGenBuffers(1, &im.vbo);
+    glGenBuffers(kVboRing, im.vbos);
     glGenBuffers(1, &im.ibo);
     glBindVertexArray(im.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, im.vbo);
-    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(sizeof(Vertex) * 4 * kMaxQuads), nullptr, GL_STREAM_DRAW);
+    for (int i = 0; i < kVboRing; ++i) {
+        glBindBuffer(GL_ARRAY_BUFFER, im.vbos[i]);
+        glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(sizeof(Vertex) * 4 * kMaxQuads), nullptr, GL_STREAM_DRAW);
+    }
     for (int i = 0; i < 5; ++i) glEnableVertexAttribArray(i);
     im.set_attrib_pointers(0);
 
@@ -283,6 +288,7 @@ void Renderer::begin_frame(int fb_w, int fb_h, RGBA clear) {
     quads_ = 0;
     im.nq = 0;
     im.vbo_offset = 0;
+    im.vbo_index = (im.vbo_index + 1) % kVboRing;
     im.batch_tex = 0;
     im.batch_font = nullptr;
     xf_ = Transform{};
@@ -317,33 +323,35 @@ void Renderer::end_frame() {
 void Renderer::flush() {
     Impl& im = *impl_;
     if (im.nq == 0) return;
+    using clk = std::chrono::steady_clock; auto T0 = clk::now(); bool regen_done = false;
     if (im.batch_tex) {
         glBindTexture(GL_TEXTURE_2D, im.batch_tex);
         bool regen = im.batch_font && im.batch_font->take_atlas_dirty();
         if (im.mip_tex != im.batch_tex) regen = true;
         if (regen) {
             glGenerateMipmap(GL_TEXTURE_2D);
-            im.mip_tex = im.batch_tex;
+            im.mip_tex = im.batch_tex; regen_done = true;
         }
         glUniform2f(im.u_tex_size, (float)im.batch_tex_size, (float)im.batch_tex_size);
     }
-    // Ring-buffer upload: append at vbo_offset, orphan the whole buffer only when it wraps.
-    glBindBuffer(GL_ARRAY_BUFFER, im.vbo);
+    // Upload: each frame appends into its own VBO of a kVboRing-deep ring, so the buffer being
+    // written was last read by the GPU kVboRing frames ago and glBufferSubData does not stall.
+    // Orphaning only happens if a single frame overflows its buffer.
+    glBindBuffer(GL_ARRAY_BUFFER, im.vbos[im.vbo_index]);
     const GLsizeiptr cap = (GLsizeiptr)(sizeof(Vertex) * 4 * kMaxQuads);
     GLsizeiptr bytes = (GLsizeiptr)(sizeof(Vertex) * 4 * (size_t)im.nq);
-    if (im.vbo_offset + bytes > cap || im.vbo_offset == 0) {
-        glBufferData(GL_ARRAY_BUFFER, cap, nullptr, GL_STREAM_DRAW);   // orphan (once per frame, or on wrap)
+    if (im.vbo_offset + bytes > cap) {
+        glBufferData(GL_ARRAY_BUFFER, cap, nullptr, GL_STREAM_DRAW);   // orphan
         im.vbo_offset = 0;
     }
-    static const bool dbg = getenv("CANOPY_FLUSH_DEBUG") != nullptr;
-    auto t0 = std::chrono::steady_clock::now();
+    auto T1 = clk::now();
     glBufferSubData(GL_ARRAY_BUFFER, im.vbo_offset, bytes, im.verts.data());
-    auto t1 = std::chrono::steady_clock::now();
+    auto T2 = clk::now();
     im.set_attrib_pointers(im.vbo_offset);
     glDrawElements(GL_TRIANGLES, (GLsizei)(im.nq * 6), GL_UNSIGNED_INT, nullptr);
-    auto t2 = std::chrono::steady_clock::now();
-    if (dbg && im.nq > 10000) std::fprintf(stderr, "flush %d quads: sub %.2f ms draw %.2f ms\n", im.nq,
-        std::chrono::duration<double, std::milli>(t1 - t0).count(), std::chrono::duration<double, std::milli>(t2 - t1).count());
+    auto T3 = clk::now();
+    auto ms = [](clk::time_point a, clk::time_point b){ return std::chrono::duration<double, std::milli>(b - a).count(); };
+    if (getenv("CANOPY_FLUSH_DEBUG") && im.nq > 10000) std::fprintf(stderr, "flush %d q: pre %.2f (regen %d) sub %.2f draw %.2f\n", im.nq, ms(T0,T1), (int)regen_done, ms(T1,T2), ms(T2,T3));
     im.vbo_offset += bytes;
     ++draw_calls_;
     im.nq = 0;

@@ -261,6 +261,9 @@ struct Terminal::Impl : VtHandler {
         else if (scr->y > 0) { scr->y--; ++gen; }
     }
     void linefeed() {
+        // An explicit newline on a line means it is not soft-wrapped into the next one (an app that
+        // rewrote a previously wrapped line and then sent LF must not have its lines joined by text()).
+        cur_line().wrapped = false;
         index();
         if (modes.lnm) scr->x = 0;
         pending_wrap = false;
@@ -420,7 +423,7 @@ struct Terminal::Impl : VtHandler {
         case 0x0E: gl = 1; break;                 // SO
         case 0x0F: gl = 0; break;                 // SI
         case 0x84: index(); pending_wrap = false; break;                // IND
-        case 0x85: index(); scr->x = 0; pending_wrap = false; break;    // NEL
+        case 0x85: cur_line().wrapped = false; index(); scr->x = 0; pending_wrap = false; break;    // NEL
         case 0x88: tabs[(size_t)scr->x] = 1; break;                     // HTS
         case 0x8D: reverse_index(); pending_wrap = false; break;        // RI
         default: break;
@@ -517,7 +520,7 @@ struct Terminal::Impl : VtHandler {
             case '7': save_cursor(); break;
             case '8': restore_cursor(); break;
             case 'D': index(); pending_wrap = false; break;
-            case 'E': index(); scr->x = 0; pending_wrap = false; break;
+            case 'E': cur_line().wrapped = false; index(); scr->x = 0; pending_wrap = false; break;
             case 'H': tabs[(size_t)scr->x] = 1; break;
             case 'M': reverse_index(); pending_wrap = false; break;
             case 'c': full_reset(); break;

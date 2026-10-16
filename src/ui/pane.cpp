@@ -58,6 +58,13 @@ bool Pane::start_session(std::string* err) {
     std::string e;
     if (!session->start(o, &e)) { if (err) *err = e; err_ = e; session.reset(); return false; }
     Terminal& t = session->term();
+    {
+        const Theme& th = app_.theme();
+        auto pack = [](const RGB8& c) { return (uint32_t)c.r << 16 | (uint32_t)c.g << 8 | c.b; };
+        t.set_default_colors(pack(th.foreground), pack(th.background), pack(th.cursor));
+        for (int i = 0; i < 16; i++) t.set_palette_color(i, pack(th.ansi[i]));
+        t.set_cell_pixel_size((int)cell_w(), (int)cell_h());
+    }
     auto prev_cwd = t.on_cwd;
     t.on_cwd = [this, prev_cwd](const std::string& s) {
         if (prev_cwd) prev_cwd(s);

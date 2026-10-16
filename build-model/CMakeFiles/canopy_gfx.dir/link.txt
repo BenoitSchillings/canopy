@@ -1,2 +1,0 @@
-/usr/bin/ar qc libcanopy_gfx.a CMakeFiles/canopy_gfx.dir/src/gfx/font.cpp.o CMakeFiles/canopy_gfx.dir/src/gfx/gl.cpp.o CMakeFiles/canopy_gfx.dir/src/gfx/renderer.cpp.o CMakeFiles/canopy_gfx.dir/src/gfx/window.cpp.o
-/usr/bin/ranlib libcanopy_gfx.a

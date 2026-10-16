@@ -140,6 +140,7 @@ int main(int argc, char** argv) {
     printf("modes: alt=%d app_cursor=%d app_keypad=%d bracketed=%d focus=%d mouse=%d enc=%d origin=%d autowrap=%d insert=%d lnm=%d\n",
            m.alt_screen, m.app_cursor_keys, m.app_keypad, m.bracketed_paste, m.focus_events, (int)m.mouse, (int)m.mouse_enc, m.origin, m.autowrap, m.insert, m.lnm);
     printf("title: \"%s\"  cwd: \"%s\"  bells: %zu  history: %lld lines (base %lld)\n", t.title().c_str(), t.cwd().c_str(), bells.size(), (long long)t.history_count(), (long long)t.history_base());
+    printf("session cwd: \"%s\"  foreground: \"%s\"\n", s.cwd().c_str(), s.pty().foreground_name().c_str());
     if (exited) printf("exit: status=%d after %.2fs\n", s.exit_status(), exit_at);
     else printf("exit: still running after %.2fs\n", elapsed());
     if (show_attrs) {

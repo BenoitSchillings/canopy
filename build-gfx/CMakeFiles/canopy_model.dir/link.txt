@@ -1,2 +1,0 @@
-/usr/bin/ar qc libcanopy_model.a CMakeFiles/canopy_model.dir/src/core/json.cpp.o CMakeFiles/canopy_model.dir/src/core/config.cpp.o CMakeFiles/canopy_model.dir/src/core/activity.cpp.o CMakeFiles/canopy_model.dir/src/core/structure.cpp.o
-/usr/bin/ranlib libcanopy_model.a

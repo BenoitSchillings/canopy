@@ -5,6 +5,8 @@
 //   --stress     start with many extra grid copies (~100k quads) for batching measurements
 //   --novsync    disable vsync
 //   --frames N   exit after N frames (prints stats)
+//   --bench      glFinish after every swap so the GL calls never block on frame pacing
+//                (the batch/submit numbers then measure CPU work only)
 #include "gfx/window.h"
 #include "gfx/renderer.h"
 #include "gfx/font.h"
@@ -235,11 +237,12 @@ Transform compose(const Transform& cam, float scale, float tx, float ty) {
 } // namespace
 
 int main(int argc, char** argv) {
-    bool stress = false, vsync = true;
+    bool stress = false, vsync = true, bench = false;
     int max_frames = 0;
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--stress")) stress = true;
         else if (!std::strcmp(argv[i], "--novsync")) vsync = false;
+        else if (!std::strcmp(argv[i], "--bench")) { bench = true; vsync = false; }
         else if (!std::strcmp(argv[i], "--frames") && i + 1 < argc) max_frames = std::atoi(argv[++i]);
     }
 
@@ -403,6 +406,7 @@ int main(int argc, char** argv) {
         if (cpu_ms > 4.0 && getenv("GFXDEMO_SPIKES")) std::printf("spike: batch %.2f ms submit %.2f ms (quads %d, draws %d)\n", cpu_ms, gl_ms, r.quads(), r.draw_calls());
         gl_check("frame");
         win.swap();
+        if (bench) glFinish();
         ++frames;
 
         if (now - last_title >= 1.0) {
