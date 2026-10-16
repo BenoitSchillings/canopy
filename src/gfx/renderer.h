@@ -59,12 +59,14 @@ public:
     // Stats
     int draw_calls() const { return draw_calls_; }
     int quads() const { return quads_; }
+    double gl_ms() const { return gl_ms_; }   // wall time spent inside GL calls by flush() this frame (driver stalls show up here)
 
 private:
     struct Impl;
     Impl* impl_;
     Transform xf_;
     int draw_calls_ = 0, quads_ = 0;
+    double gl_ms_ = 0;
 };
 
 } // namespace canopy::gfx

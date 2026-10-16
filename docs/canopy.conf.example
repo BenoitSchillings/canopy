@@ -11,7 +11,7 @@
 
 # ---- Font and cell geometry -------------------------------------------------
 # fontconfig family name; falls back to any monospace font if not found.
-#font_family = Source Code Pro
+#font_family = DejaVu Sans Mono
 # Bold face family; empty means derive from font_family / synthesize.
 #font_family_bold =
 # Font size in pixels (float).

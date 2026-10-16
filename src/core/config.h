@@ -26,7 +26,7 @@ struct Theme {
 };
 
 struct Config {
-    std::string font_family = "Source Code Pro";   // fontconfig family; falls back to any monospace
+    std::string font_family = "DejaVu Sans Mono";   // fontconfig family; App tries a fallback chain
     std::string font_family_bold;                  // empty => synthesize/auto
     float font_size_px = 15.0f;
     int cell_padding_x = 0, cell_padding_y = 1;    // extra pixels per cell

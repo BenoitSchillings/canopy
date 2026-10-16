@@ -300,6 +300,8 @@ int main(int argc, char** argv) {
                 if (e.key.key == Key::Char && e.key.keysym == '0' && (e.mods & MOD_CTRL)) cam = Transform{};
                 if (e.key.key == Key::Char && !e.key.text.empty())
                     std::printf("key: Char keysym=U+%04X text='%s' mods=%u\n", (unsigned)e.key.keysym, e.key.text.c_str(), e.mods);
+                else if (e.key.key != Key::Char)
+                    std::printf("key: id=%d mods=%u repeat=%d\n", (int)e.key.key, e.mods, (int)e.repeat);
                 break;
             case Event::Text: std::printf("text: '%s'\n", e.key.text.c_str()); break;
             case Event::MouseDown:
@@ -354,11 +356,12 @@ int main(int argc, char** argv) {
         r.rounded_rect_stroke({8, 44.f + 2 * 24, 204, 22}, 6, rgba8(120, 160, 255, 0.9f), 1.f);
         r.circle(196, 60.f + 4 * 24 - 4, 4, rgba8(80, 250, 123));
         r.draw_text(ui_font, 16, (float)fh - 16, "Ctrl+wheel zoom, drag pan, S stress", rgba8(120, 125, 140));
-        // powerline / box glyphs at 3x through draw_text (procedural path)
-        r.fill_rect({8, (float)fh - 150, 204, 60}, rgba8(60, 60, 80));
-        r.draw_text(font, 12, (float)fh - 100, "\xEE\x82\xB0\xEE\x82\xB1\xEE\x82\xB2\xEE\x82\xB3\xEE\x82\xB4\xEE\x82\xB5\xEE\x82\xB6\xEE\x82\xB7", rgba8(255, 200, 80), STYLE_REGULAR, 2.5f);
-        r.draw_text(font, 12, (float)fh - 50, "\xEE\x82\xB8\xEE\x82\xBA\xEE\x82\xBC\xEE\x82\xBE╭╮╰╯╬", rgba8(120, 220, 255), STYLE_REGULAR, 2.5f);
-        r.draw_text(font, 12, (float)fh - 170, "\xEE\x82\xB0\xEE\x82\xB1\xEE\x82\xB2\xEE\x82\xB3\xEE\x82\xB4\xEE\x82\xB5\xEE\x82\xB6\xEE\x82\xB7 \xEE\x82\xB8\xEE\x82\xBA\xEE\x82\xBC\xEE\x82\xBE╭╮╰╯╬", rgba8(255, 200, 80), STYLE_REGULAR, 1.f);
+        // procedural glyph strip (powerline, triangles, arcs) through draw_text at 1x and 2.5x
+        r.draw_text(ui_font, 16, (float)fh - 215, "procedural glyphs", rgba8(120, 125, 140));
+        r.fill_rect({8, (float)fh - 200, 204, 60}, rgba8(60, 60, 80));
+        r.draw_text(font, 12, (float)fh - 150, "\xEE\x82\xB0\xEE\x82\xB1\xEE\x82\xB2\xEE\x82\xB3\xEE\x82\xB4\xEE\x82\xB5\xEE\x82\xB6\xEE\x82\xB7", rgba8(255, 200, 80), STYLE_REGULAR, 2.5f);
+        r.draw_text(font, 12, (float)fh - 100, "\xEE\x82\xB8\xEE\x82\xBA\xEE\x82\xBC\xEE\x82\xBE╭╮╰╯╬", rgba8(120, 220, 255), STYLE_REGULAR, 2.5f);
+        r.draw_text(font, 12, (float)fh - 50, "\xEE\x82\xB0\xEE\x82\xB1\xEE\x82\xB2\xEE\x82\xB3\xEE\x82\xB4\xEE\x82\xB5\xEE\x82\xB6\xEE\x82\xB7 \xEE\x82\xB8\xEE\x82\xBA\xEE\x82\xBC\xEE\x82\xBE╭╮╰╯╬", rgba8(255, 200, 80), STYLE_REGULAR, 1.f);
 
         // --- canvas content under the camera ---
         const float panel_x = 240, panel_y = 40;
@@ -377,7 +380,7 @@ int main(int argc, char** argv) {
         panel(panel_x, panel_y, 1.f, "pane: zoom 1.0 (pixel exact)");
         panel(panel_x + gw + 40, panel_y, 0.5f, "miniature 0.5");
         panel(panel_x + gw + 40, panel_y + gh * 0.5f + 60, 0.25f, "miniature 0.25");
-        panel(panel_x + gw + 40 + gw * 0.5f + 40, panel_y + gh * 0.5f + 60, 0.25f, "miniature 0.25 (b)");
+        panel(panel_x + gw + 40 + gw * 0.25f + 30, panel_y + gh * 0.5f + 60, 0.25f, "miniature 0.25 (b)");
         // 2.0 zoom: a clipped window onto the grid's top-left corner
         {
             float zx = panel_x, zy = panel_y + gh + 60, zw = gw, zh = 180;

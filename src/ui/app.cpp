@@ -51,10 +51,18 @@ bool App::init(int argc, char** argv, std::string* err) {
     if (!renderer_->init(err)) return false;
     font_ = std::make_unique<gfx::Font>();
     float px = cfg_.font_size_px * window_->dpi_scale();
-    std::string ferr;
-    if (!font_->load(cfg_.font_family, px, cfg_.cell_padding_x, cfg_.cell_padding_y, &ferr)) {
-        fprintf(stderr, "canopy: font '%s' failed (%s); falling back to monospace\n", cfg_.font_family.c_str(), ferr.c_str());
-        if (!font_->load("monospace", px, cfg_.cell_padding_x, cfg_.cell_padding_y, err)) return false;
+    {
+        std::vector<std::string> candidates = {cfg_.font_family, "DejaVu Sans Mono", "JetBrains Mono", "Fira Code", "Source Code Pro", "Ubuntu Mono", "Liberation Mono", "monospace"};
+        bool ok = false;
+        for (size_t i = 0; i < candidates.size() && !ok; i++) {
+            if (candidates[i].empty() || (i > 0 && candidates[i] == cfg_.font_family)) continue;
+            std::string ferr;
+            if (font_->load(candidates[i], px, cfg_.cell_padding_x, cfg_.cell_padding_y, &ferr)) {
+                if (i > 0) fprintf(stderr, "canopy: font '%s' unavailable; using '%s'\n", cfg_.font_family.c_str(), candidates[i].c_str());
+                ok = true;
+            }
+        }
+        if (!ok) { if (err) *err = "no usable monospace font found"; return false; }
     }
     shell_dir_ = find_shell_integration_dir();
     if (shell_dir_.empty()) fprintf(stderr, "canopy: shell integration script not found; blocks will be unavailable\n");

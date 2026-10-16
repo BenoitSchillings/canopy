@@ -14,8 +14,10 @@
 #include "window.h"
 #include "gl.h"
 #include <SDL.h>
+#include <clocale>
 #include <cstdio>
 #include <cstring>
+#include <strings.h>
 
 namespace canopy::gfx {
 
@@ -132,6 +134,14 @@ Window::~Window() {
 }
 
 bool Window::create(const std::string& title, int w, int h, std::string* err) {
+    // SDL's X11 backend converts titles/IME text with the C library's LC_CTYPE; in the "C"
+    // locale non-ASCII titles silently fail (only WM_NAME gets set). A terminal emulator needs
+    // a UTF-8 ctype anyway, so pick the environment's locale and fall back to C.UTF-8.
+    {
+        const char* loc = setlocale(LC_CTYPE, "");
+        bool utf8 = loc && (strcasestr(loc, "utf-8") || strcasestr(loc, "utf8"));
+        if (!utf8) setlocale(LC_CTYPE, "C.UTF-8");
+    }
     SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
     SDL_SetHint(SDL_HINT_IME_SHOW_UI, "1");
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");

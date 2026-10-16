@@ -12,7 +12,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cstdlib>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -21,8 +20,7 @@ namespace canopy::gfx {
 
 namespace {
 
-constexpr int kMaxQuads = 1 << 16;   // per flush; 40 B * 4 verts * 65536 = 10.5 MB VBO
-constexpr int kVboRing = 3;          // frames in flight before a VBO is rewritten
+constexpr int kMaxQuads = 1 << 16;   // per flush; 40 B * 4 verts * 65536 = 10.5 MB max upload
 
 struct Vertex {
     float x, y;
@@ -170,34 +168,19 @@ struct Renderer::Impl {
     }
 
 
-    GLuint vao = 0, ibo = 0, prog = 0;
-    GLuint vbos[kVboRing] = {};
-    int vbo_index = 0;
+    GLuint vao = 0, vbo = 0, ibo = 0, prog = 0;
     GLint u_viewport = -1, u_tex = -1, u_tex_size = -1, u_gamma = -1;
     std::vector<Vertex> verts;
     int nq = 0;                         // quads in the pending batch
     GLuint batch_tex = 0;               // 0 => no texture needed yet
     Font* batch_font = nullptr;
     int batch_tex_size = 1;
-    GLuint mip_tex = 0;                 // texture whose mipmaps were last generated
     int fb_w = 0, fb_h = 0;
     std::vector<FRect> clips;           // screen-space clip stack
     IRect scissor{0, 0, 0, 0};
     float gamma = 1.f / 1.2f;
     bool snap = true;                   // transform scale == 1: snap glyphs/lines to pixels
     bool gl_ok = false;
-
-    GLsizeiptr vbo_offset = 0;          // ring-buffer write position (bytes)
-
-    void set_attrib_pointers(GLsizeiptr base) {
-        const GLsizei stride = sizeof(Vertex);
-        auto off = [&](size_t o) { return (const void*)(uintptr_t)(base + (GLsizeiptr)o); };
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, off(offsetof(Vertex, x)));
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, off(offsetof(Vertex, u)));
-        glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, off(offsetof(Vertex, rgba)));
-        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride, off(offsetof(Vertex, p)));
-        glVertexAttribIPointer(4, 2, GL_UNSIGNED_SHORT, stride, off(offsetof(Vertex, mode)));
-    }
 
     Vertex* alloc_quad(Renderer& r) {
         if (nq >= kMaxQuads) r.flush();
@@ -212,7 +195,7 @@ Renderer::Renderer() : impl_(new Impl) {}
 Renderer::~Renderer() {
     Impl& im = *impl_;
     if (im.gl_ok && glDeleteBuffers) {
-        glDeleteBuffers(kVboRing, im.vbos);
+        if (im.vbo) glDeleteBuffers(1, &im.vbo);
         if (im.ibo) glDeleteBuffers(1, &im.ibo);
         if (im.vao) glDeleteVertexArrays(1, &im.vao);
         if (im.prog) glDeleteProgram(im.prog);
@@ -251,15 +234,17 @@ bool Renderer::init(std::string* err) {
     im.u_gamma = glGetUniformLocation(im.prog, "u_gamma");
 
     glGenVertexArrays(1, &im.vao);
-    glGenBuffers(kVboRing, im.vbos);
+    glGenBuffers(1, &im.vbo);
     glGenBuffers(1, &im.ibo);
     glBindVertexArray(im.vao);
-    for (int i = 0; i < kVboRing; ++i) {
-        glBindBuffer(GL_ARRAY_BUFFER, im.vbos[i]);
-        glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(sizeof(Vertex) * 4 * kMaxQuads), nullptr, GL_STREAM_DRAW);
-    }
+    glBindBuffer(GL_ARRAY_BUFFER, im.vbo);
+    const GLsizei stride = sizeof(Vertex);
     for (int i = 0; i < 5; ++i) glEnableVertexAttribArray(i);
-    im.set_attrib_pointers(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, (const void*)offsetof(Vertex, x));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (const void*)offsetof(Vertex, u));
+    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride, (const void*)offsetof(Vertex, rgba));
+    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, stride, (const void*)offsetof(Vertex, p));
+    glVertexAttribIPointer(4, 2, GL_UNSIGNED_SHORT, stride, (const void*)offsetof(Vertex, mode));
 
     // Static quad index buffer.
     std::vector<uint32_t> idx((size_t)kMaxQuads * 6);
@@ -286,9 +271,8 @@ void Renderer::begin_frame(int fb_w, int fb_h, RGBA clear) {
     im.fb_h = fb_h;
     draw_calls_ = 0;
     quads_ = 0;
+    gl_ms_ = 0;
     im.nq = 0;
-    im.vbo_offset = 0;
-    im.vbo_index = (im.vbo_index + 1) % kVboRing;
     im.batch_tex = 0;
     im.batch_font = nullptr;
     xf_ = Transform{};
@@ -323,36 +307,22 @@ void Renderer::end_frame() {
 void Renderer::flush() {
     Impl& im = *impl_;
     if (im.nq == 0) return;
-    using clk = std::chrono::steady_clock; auto T0 = clk::now(); bool regen_done = false;
+    const auto t_gl0 = std::chrono::steady_clock::now();
     if (im.batch_tex) {
         glBindTexture(GL_TEXTURE_2D, im.batch_tex);
-        bool regen = im.batch_font && im.batch_font->take_atlas_dirty();
-        if (im.mip_tex != im.batch_tex) regen = true;
-        if (regen) {
-            glGenerateMipmap(GL_TEXTURE_2D);
-            im.mip_tex = im.batch_tex; regen_done = true;
-        }
+        // The font reports dirty after any upload (including its first and after growth), so
+        // mipmaps are regenerated exactly when the atlas content changed.
+        if (im.batch_font && im.batch_font->take_atlas_dirty()) glGenerateMipmap(GL_TEXTURE_2D);
         glUniform2f(im.u_tex_size, (float)im.batch_tex_size, (float)im.batch_tex_size);
     }
-    // Upload: each frame appends into its own VBO of a kVboRing-deep ring, so the buffer being
-    // written was last read by the GPU kVboRing frames ago and glBufferSubData does not stall.
-    // Orphaning only happens if a single frame overflows its buffer.
-    glBindBuffer(GL_ARRAY_BUFFER, im.vbos[im.vbo_index]);
-    const GLsizeiptr cap = (GLsizeiptr)(sizeof(Vertex) * 4 * kMaxQuads);
+    // Upload by buffer re-specification: a fresh data store of exactly the batch size per
+    // flush. Measured on NVIDIA 595: 1.5 MB (37k quads) in ~0.6 ms with no stalls, whereas
+    // appending with glBufferSubData into an orphaned/ring buffer stalled 3-6 ms per frame.
+    glBindBuffer(GL_ARRAY_BUFFER, im.vbo);
     GLsizeiptr bytes = (GLsizeiptr)(sizeof(Vertex) * 4 * (size_t)im.nq);
-    if (im.vbo_offset + bytes > cap) {
-        glBufferData(GL_ARRAY_BUFFER, cap, nullptr, GL_STREAM_DRAW);   // orphan
-        im.vbo_offset = 0;
-    }
-    auto T1 = clk::now();
-    glBufferSubData(GL_ARRAY_BUFFER, im.vbo_offset, bytes, im.verts.data());
-    auto T2 = clk::now();
-    im.set_attrib_pointers(im.vbo_offset);
+    glBufferData(GL_ARRAY_BUFFER, bytes, im.verts.data(), GL_STREAM_DRAW);
     glDrawElements(GL_TRIANGLES, (GLsizei)(im.nq * 6), GL_UNSIGNED_INT, nullptr);
-    auto T3 = clk::now();
-    auto ms = [](clk::time_point a, clk::time_point b){ return std::chrono::duration<double, std::milli>(b - a).count(); };
-    if (getenv("CANOPY_FLUSH_DEBUG") && im.nq > 10000) std::fprintf(stderr, "flush %d q: pre %.2f (regen %d) sub %.2f draw %.2f\n", im.nq, ms(T0,T1), (int)regen_done, ms(T1,T2), ms(T2,T3));
-    im.vbo_offset += bytes;
+    gl_ms_ += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_gl0).count();
     ++draw_calls_;
     im.nq = 0;
 }
