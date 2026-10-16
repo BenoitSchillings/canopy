@@ -150,17 +150,17 @@ void build_grid(Grid& g) {
     put(g, 42, 13, "blocks: █▓▒░ ▀▄ ▌▐ ▖▗▘▝ ▙▟▛▜ ▁▂▃▄▅▆▇█", fg);
     put(g, 42, 14, "▏▎▍▌▋▊▉█ ▔▕", fg);
     c = put(g, 42, 15, " ~/terminal ", kPalette[0], 0, kPalette[4]);
-    c = put(g, c, 15, "", kPalette[4], 0, kPalette[2]);
+    c = put(g, c, 15, "\xEE\x82\xB0", kPalette[4], 0, kPalette[2]);
     c = put(g, c, 15, " main ", kPalette[0], 0, kPalette[2]);
-    c = put(g, c, 15, "", kPalette[2], 0, kPalette[0]);
-    c = put(g, c, 15, "  ", kPalette[7]);
-    c = put(g, c, 15, "", kPalette[5], 0, kPalette[0]);
+    c = put(g, c, 15, "\xEE\x82\xB0", kPalette[2], 0, kPalette[0]);
+    c = put(g, c, 15, " \xEE\x82\xB1 ", kPalette[7]);
+    c = put(g, c, 15, "\xEE\x82\xB6", kPalette[5], 0, kPalette[0]);
     c = put(g, c, 15, " ok ", kPalette[0], 0, kPalette[5]);
-    c = put(g, c, 15, "", kPalette[5], 0, kPalette[0]);
-    c = put(g, c, 15, " ", kPalette[2]);
-    c = put(g, c, 15, "", kPalette[3], 0, kPalette[0]);
-    c = put(g, c, 15, " ", kPalette[3]);
-    put(g, 42, 16, "▲▼ ▲▼ ◢◣◥◤", kPalette[7]);
+    c = put(g, c, 15, "\xEE\x82\xB4", kPalette[5], 0, kPalette[0]);
+    c = put(g, c, 15, " \xEE\x82\xB3 ", kPalette[2]);
+    c = put(g, c, 15, "\xEE\x82\xB2", kPalette[3], 0, kPalette[0]);
+    c = put(g, c, 15, " \xEE\x82\xB5\xEE\x82\xB7 ", kPalette[3]);
+    put(g, 42, 16, "\xEE\x82\xB8\xEE\x82\xBA\xEE\x82\xBC\xEE\x82\xBE \xEE\x82\xB9\xEE\x82\xBB\xEE\x82\xBD\xEE\x82\xBF ◢◣◥◤ ▲▼", kPalette[7]);
     // CJK, combining, emoji, symbols
     put(g, 42, 18, "CJK: 日本語テキスト 中文 한국어", fg);
     put(g, 42, 19, "combining: e\xCC\x81 a\xCC\x8A n\xCC\x83 o\xCC\x88 ", fg);
@@ -283,7 +283,7 @@ int main(int argc, char** argv) {
     bool running = true;
     int frames = 0;
     double last_title = win.now(), fps = 0;
-    double cpu_acc = 0, cpu_max = 0, gl_acc = 0;
+    double cpu_acc = 0, cpu_max = 0, gl_acc = 0, fin_acc = 0, glin_acc = 0;
     int cpu_n = 0;
     std::vector<Event> events;
     const double t0 = win.now();
@@ -354,6 +354,11 @@ int main(int argc, char** argv) {
         r.rounded_rect_stroke({8, 44.f + 2 * 24, 204, 22}, 6, rgba8(120, 160, 255, 0.9f), 1.f);
         r.circle(196, 60.f + 4 * 24 - 4, 4, rgba8(80, 250, 123));
         r.draw_text(ui_font, 16, (float)fh - 16, "Ctrl+wheel zoom, drag pan, S stress", rgba8(120, 125, 140));
+        // powerline / box glyphs at 3x through draw_text (procedural path)
+        r.fill_rect({8, (float)fh - 150, 204, 60}, rgba8(60, 60, 80));
+        r.draw_text(font, 12, (float)fh - 100, "\xEE\x82\xB0\xEE\x82\xB1\xEE\x82\xB2\xEE\x82\xB3\xEE\x82\xB4\xEE\x82\xB5\xEE\x82\xB6\xEE\x82\xB7", rgba8(255, 200, 80), STYLE_REGULAR, 2.5f);
+        r.draw_text(font, 12, (float)fh - 50, "\xEE\x82\xB8\xEE\x82\xBA\xEE\x82\xBC\xEE\x82\xBE╭╮╰╯╬", rgba8(120, 220, 255), STYLE_REGULAR, 2.5f);
+        r.draw_text(font, 12, (float)fh - 170, "\xEE\x82\xB0\xEE\x82\xB1\xEE\x82\xB2\xEE\x82\xB3\xEE\x82\xB4\xEE\x82\xB5\xEE\x82\xB6\xEE\x82\xB7 \xEE\x82\xB8\xEE\x82\xBA\xEE\x82\xBC\xEE\x82\xBE╭╮╰╯╬", rgba8(255, 200, 80), STYLE_REGULAR, 1.f);
 
         // --- canvas content under the camera ---
         const float panel_x = 240, panel_y = 40;
@@ -381,7 +386,7 @@ int main(int argc, char** argv) {
             r.draw_text(ui_font, zx, zy - 10, "zoom 2.0 (clipped)", rgba8(200, 205, 220));
             r.push_clip({zx, zy, zw, zh});
             r.set_transform(compose(cam, 2.f, zx, zy));
-            draw_grid(r, font, grid, 0, 0, now - t0, false);
+            draw_grid(r, font, grid, 0, -13.f * m.cell_h, now - t0, false);   // rows 13.. (box drawing area)
             r.pop_clip();
         }
         if (stress) {
@@ -397,27 +402,32 @@ int main(int argc, char** argv) {
         r.line(mouse_x - 8, mouse_y, mouse_x + 8, mouse_y, rgba8(255, 255, 255, 0.4f), 1.f);
         r.line(mouse_x, mouse_y - 8, mouse_x, mouse_y + 8, rgba8(255, 255, 255, 0.4f), 1.f);
 
-        auto cpu1 = std::chrono::steady_clock::now();   // batching done (pending quads not yet submitted)
         r.end_frame();
-        auto cpu2 = std::chrono::steady_clock::now();
+        auto cpu1 = std::chrono::steady_clock::now();
         double cpu_ms = std::chrono::duration<double, std::milli>(cpu1 - cpu0).count();
-        double gl_ms = std::chrono::duration<double, std::milli>(cpu2 - cpu1).count();
+        double gl_ms = 0;
+        cpu_ms -= r.gl_ms();   // batching cost only: exclude time spent inside GL calls (uploads/draws/driver stalls)
+        glin_acc += r.gl_ms();
         cpu_acc += cpu_ms; cpu_max = std::max(cpu_max, cpu_ms); gl_acc += gl_ms; ++cpu_n;
         if (cpu_ms > 4.0 && getenv("GFXDEMO_SPIKES")) std::printf("spike: batch %.2f ms submit %.2f ms (quads %d, draws %d)\n", cpu_ms, gl_ms, r.quads(), r.draw_calls());
         gl_check("frame");
         win.swap();
-        if (bench) glFinish();
+        if (bench) {
+            auto f0 = std::chrono::steady_clock::now();
+            glFinish();
+            fin_acc += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - f0).count();
+        }
         ++frames;
 
         if (now - last_title >= 1.0) {
             fps = frames / (now - last_title);
             char title[256];
-            std::snprintf(title, sizeof title, "gfxdemo — %.1f fps | batch %.2f ms avg, %.2f max | submit %.2f ms | %d draw calls | %d quads | zoom %.2f",
-                          fps, cpu_acc / std::max(1, cpu_n), cpu_max, gl_acc / std::max(1, cpu_n), r.draw_calls(), r.quads(), cam.scale);
+            std::snprintf(title, sizeof title, "gfxdemo — %.1f fps | batch %.2f ms avg, %.2f max | gl %.2f ms | finish %.2f ms | %d draw calls | %d quads | zoom %.2f",
+                          fps, cpu_acc / std::max(1, cpu_n), cpu_max, glin_acc / std::max(1, cpu_n), fin_acc / std::max(1, cpu_n), r.draw_calls(), r.quads(), cam.scale);
             win.set_title(title);
             std::printf("%s\n", title);
             std::fflush(stdout);
-            frames = 0; cpu_acc = 0; cpu_max = 0; gl_acc = 0; cpu_n = 0; last_title = now;
+            frames = 0; cpu_acc = 0; cpu_max = 0; gl_acc = 0; fin_acc = 0; glin_acc = 0; cpu_n = 0; last_title = now;
         }
         if (max_frames && --max_frames == 0) running = false;
     }

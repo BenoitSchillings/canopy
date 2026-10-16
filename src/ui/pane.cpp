@@ -1187,7 +1187,7 @@ void Pane::draw_line(Renderer& r, Font& font, const Line& ln, float x0, float y0
             RGBA uc = fg;
             if (cell.ul.kind != Color::Default) uc = col(cfg.resolve(cell.ul, true));
             if (hover_ul) uc = col(th.accent);
-            float uy = y0 + fm.ascent + fm.underline_pos;
+            float uy = y0 + fm.underline_pos;   // measured from the cell top
             float th_ = std::max(1.f, (float)fm.underline_thickness);
             UnderlineStyle us = cell.ul_style == UnderlineStyle::None ? UnderlineStyle::Single : cell.ul_style;
             if (hover_ul && !ul) us = UnderlineStyle::Dotted;
@@ -1206,7 +1206,7 @@ void Pane::draw_line(Renderer& r, Font& font, const Line& ln, float x0, float y0
             default: r.fill_rect({cx, uy, w, th_}, uc); break;
             }
         }
-        if (cell.attrs & ATTR_STRIKE) r.fill_rect({cx, y0 + fm.ascent - fm.strike_pos, w, 1.f}, fg);
+        if (cell.attrs & ATTR_STRIKE) r.fill_rect({cx, y0 + fm.strike_pos, w, 1.f}, fg);
     }
     if (header && !lod) {
         r.fill_rect({x0, y0 + ch - 1, cw * cols, 1}, alpha(col(th.accent), 0.6f));

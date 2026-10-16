@@ -49,6 +49,7 @@ private:
     int menu_hover_ = -1;
     std::vector<Toast> toasts_;
     int help_scroll_ = 0;
+    bool select_all_ = false;   // prompt: initial text is selected; first edit replaces it
 };
 
 } // namespace canopy::ui

@@ -27,7 +27,7 @@ void Overlay::open_menu(float sx, float sy, std::vector<MenuItem> items) {
 
 void Overlay::open_prompt(const std::string& label, const std::string& initial, std::function<void(const std::string&)> on_done) {
     close();
-    mode_ = Prompt; label_ = label; input_ = initial; prompt_cb_ = std::move(on_done);
+    mode_ = Prompt; label_ = label; input_ = initial; prompt_cb_ = std::move(on_done); select_all_ = !initial.empty();
     app_.request_redraw();
 }
 
@@ -155,8 +155,10 @@ bool Overlay::key(const KeyEvent& ev) {
         return true;
     case Prompt:
         if (ev.key == Key::Enter) { auto cb = prompt_cb_; std::string v = input_; close(); if (cb) cb(v); return true; }
-        if (edit_key(ev)) { app_.request_redraw(); return true; }
-        if (ev.key == Key::Char && !ev.text.empty() && !(ev.mods & MOD_CTRL)) { input_ += ev.text; app_.request_redraw(); }
+        if (ev.key == Key::Left || ev.key == Key::Right || ev.key == Key::Home || ev.key == Key::End) { select_all_ = false; app_.request_redraw(); return true; }
+        if (select_all_ && (ev.key == Key::Backspace || ev.key == Key::Delete)) { input_.clear(); select_all_ = false; app_.request_redraw(); return true; }
+        if (edit_key(ev)) { select_all_ = false; app_.request_redraw(); return true; }
+        if (ev.key == Key::Char && !ev.text.empty() && !(ev.mods & MOD_CTRL)) { if (select_all_) { input_.clear(); select_all_ = false; } input_ += ev.text; app_.request_redraw(); }
         return true;
     case Search: {
         Pane* p = app_.focused_pane();
@@ -179,7 +181,7 @@ bool Overlay::key(const KeyEvent& ev) {
 
 bool Overlay::text(const std::string& utf8) {
     if (mode_ == Palette) { input_ += utf8; refilter(); return true; }
-    if (mode_ == Prompt) { input_ += utf8; app_.request_redraw(); return true; }
+    if (mode_ == Prompt) { if (select_all_) { input_.clear(); select_all_ = false; } input_ += utf8; app_.request_redraw(); return true; }
     if (mode_ == Search) { input_ += utf8; if (Pane* p = app_.focused_pane()) p->set_search(input_); app_.request_redraw(); return true; }
     if (mode_ == Menu || mode_ == Help) return true;
     return false;
@@ -336,6 +338,7 @@ void Overlay::draw(const DrawCtx& ctx) {
         r.draw_text(font, p.x + 16, p.y + 12 + asc, label_, alpha(fg, 0.8f), gfx::STYLE_BOLD);
         Rect in = {p.x + 16, p.y + 44, w - 32, 34};
         r.rounded_rect(in, 6, alpha(col(th.background), 0.9f));
+        if (select_all_ && !input_.empty()) r.fill_rect({in.x + 9, in.y + 6, r.measure_text(font, input_) + 2, app_.cell_h() + 2}, alpha(col(th.selection), 0.9f));
         r.draw_text(font, in.x + 10, in.y + 8 + asc, input_, col(th.foreground));
         float cw = r.measure_text(font, input_);
         r.fill_rect({in.x + 11 + cw, in.y + 7, 2, app_.cell_h()}, col(th.cursor));

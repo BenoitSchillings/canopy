@@ -24,8 +24,8 @@ struct FontMetrics {
     int cell_w = 0, cell_h = 0;         // grid cell size in pixels (includes config padding)
     int ascent = 0;                     // baseline offset from cell top
     int descent = 0;
-    int underline_pos = 0, underline_thickness = 1;
-    int strike_pos = 0;
+    int underline_pos = 0, underline_thickness = 1;   // y offset from the cell top
+    int strike_pos = 0;                                // y offset from the cell top
 };
 
 class FontAtlas;
