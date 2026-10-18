@@ -360,16 +360,16 @@ void App::setup_actions() {
     });
     add("activity.restart", "Restart shell in activity", "", [this] { if (Pane* p = focused_pane()) { p->stop_session(); ensure_session(*p); } });
     add("activity.collapse", "Collapse / expand children", "", [this] { if (Activity* a = tree_.get(focused_)) { a->collapsed = !a->collapsed; canvas_->layout(); } });
-    add("view.overview", "Toggle overview", "F1", [this] { canvas_->toggle_overview(); });
-    add("view.sidebar", "Toggle sidebar", "F2", [this] { sidebar_->visible = !sidebar_->visible; request_redraw(); });
+    add("view.overview", "Toggle overview", "Ctrl+Shift+O", [this] { canvas_->toggle_overview(); });
+    add("view.sidebar", "Toggle sidebar", "Ctrl+Shift+B", [this] { sidebar_->visible = !sidebar_->visible; request_redraw(); });
     add("view.zoom_in", "Zoom in", "Ctrl+=", [this] { canvas_->zoom_at(canvas_->viewport.x + canvas_->viewport.w / 2, canvas_->viewport.y + canvas_->viewport.h / 2, 1.2f); });
     add("view.zoom_out", "Zoom out", "Ctrl+-", [this] { canvas_->zoom_at(canvas_->viewport.x + canvas_->viewport.w / 2, canvas_->viewport.y + canvas_->viewport.h / 2, 1 / 1.2f); });
     add("view.zoom_reset", "Zoom to 100%", "Ctrl+0", [this] { canvas_->reset_zoom(); });
     add("view.relayout", "Re-layout tree", "", [this] { for (auto& kv : panes_) if (Activity* a = tree_.get(kv.first)) a->auto_place = true; canvas_->layout(); });
     add("view.font_bigger", "Font size +", "Ctrl+Shift+=", [this] { set_font_size(cfg_.font_size_px + 1); });
     add("view.font_smaller", "Font size −", "Ctrl+Shift+-", [this] { set_font_size(cfg_.font_size_px - 1); });
-    add("view.help", "Keyboard help", "F10", [this] { overlay_->toggle_help(); });
-    add("view.rail", "Toggle peek rail (other terminals)", "F3", [this] { rail_->visible = !rail_->visible; request_redraw(); });
+    add("view.help", "Keyboard help", "Ctrl+Shift+H", [this] { overlay_->toggle_help(); });
+    add("view.rail", "Toggle peek rail (other terminals)", "Ctrl+Shift+M", [this] { rail_->visible = !rail_->visible; request_redraw(); });
     add("view.switcher", "Find terminal…", "Ctrl+Tab", [this] { switcher_->show(); });
     add("ai.refresh", "Refresh summary of this terminal", "", [this] { request_summary(focused_, true); });
     add("ai.refresh_all", "Refresh all summaries", "", [this] { for (auto& kv : panes_) request_summary(kv.first, true); });
@@ -401,10 +401,6 @@ void App::run_action(const std::string& id) {
 
 bool App::handle_global_key(const KeyEvent& ev) {
     bool ctrl = ev.mods & MOD_CTRL, shift = ev.mods & MOD_SHIFT, alt = ev.mods & MOD_ALT;
-    if (ev.key == Key::F1 && !ctrl && !alt) { run_action("view.overview"); return true; }
-    if (ev.key == Key::F2 && !ctrl && !alt) { run_action("view.sidebar"); return true; }
-    if (ev.key == Key::F10 && !ctrl && !alt) { run_action("view.help"); return true; }
-    if (ev.key == Key::F3 && !ctrl && !alt) { run_action("view.rail"); return true; }
     if (ctrl && !alt && ev.key == Key::Tab) { if (switcher_->open()) switcher_->step(shift ? -1 : 1); else switcher_->show(); return true; }
     if (ev.key == Key::Escape && canvas_->overview()) { canvas_->exit_overview(); return true; }
     if (ctrl && alt && !shift) {
@@ -432,6 +428,10 @@ bool App::handle_global_key(const KeyEvent& ev) {
         case 'r': run_action("activity.rename"); return true;
         case 'p': run_action("app.palette"); return true;
         case 'e': run_action("block.next_error"); return true;
+        case 'o': run_action("view.overview"); return true;
+        case 'b': run_action("view.sidebar"); return true;
+        case 'm': run_action("view.rail"); return true;
+        case 'h': case '/': case '?': run_action("view.help"); return true;
         case 'j': run_action("block.json"); return true;
         case '=': case '+': run_action("view.font_bigger"); return true;
         case '-': case '_': run_action("view.font_smaller"); return true;
@@ -463,7 +463,6 @@ void App::handle_event(const gfx::Event& ev) {
         if (Pane* p = focused_pane()) if (p->live()) p->session->term().notify_focus(ev.type == T::FocusIn);
         request_redraw(); break;
     case T::Key: {
-        if (ev.repeat && (ev.key.key == Key::F1 || ev.key.key == Key::F2 || ev.key.key == Key::F3)) break;
         if (switcher_->open()) {
             bool ctrl = ev.key.mods & MOD_CTRL;
             if (ctrl && ev.key.key == Key::Tab) { switcher_->step((ev.key.mods & MOD_SHIFT) ? -1 : 1); break; }

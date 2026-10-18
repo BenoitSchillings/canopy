@@ -50,7 +50,7 @@
 # Show the activity outliner (toggle at runtime with F2).
 #sidebar_visible = true
 # Sidebar width in pixels.
-#sidebar_width = 240
+#sidebar_width = 280
 # Animate zoom/pan/fold transitions.
 #animations = true
 # Multiplier applied to animation durations (2 = twice as fast).
@@ -100,8 +100,8 @@
 #canvas_bg = #08090b
 
 # ---- Peek rail and AI summaries ----
-# Right-hand rail with live miniatures of the other terminals (F3 toggles).
-#peek_visible = true
+# Optional right-hand rail with the other terminals ranked by attention (Ctrl+Shift+M).
+#peek_visible = false
 #peek_width = 330
 # Short natural-language summaries of what each terminal is doing. The summary
 # request contains recent commands, output tails and the current screen text of

@@ -237,7 +237,7 @@ void Canvas::draw(const DrawCtx& base) {
     r.set_transform({1, 0, 0});
     if (overview_) {
         const Theme& th = app_.theme();
-        std::string hint = "Overview · click a pane to open · Esc or F1 to return";
+        std::string hint = "Overview · click a pane to open · Esc to return";
         float w = r.measure_text(app_.font(), hint) + 24;
         Rect b = {viewport.x + (viewport.w - w) / 2, viewport.y + viewport.h - 44, w, 30};
         r.rounded_rect(b, 15, alpha(col(th.chrome_bg), 0.9f));

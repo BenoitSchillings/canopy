@@ -9,14 +9,14 @@ A GPU-rendered terminal for Linux built around three ideas:
   status and duration. Fold it, pin it, re-run it, copy its output, diff it against
   the previous run, or fork it into a child activity.
 * **A zoomable canvas** — activities are panes on an infinite canvas laid out as a
-  tree. Zoom out (F1) to see every live session as a miniature; click one to fly to it.
+  tree. Zoom out (Ctrl+Shift+O) to see every live session as a miniature; click one to fly to it.
 
 * **Finding the right terminal.** Press **Ctrl+Tab** for a switcher that shows every
   terminal as a live miniature with a one-line summary of what it is doing ("gcc build of
   main.c failed on undeclared x", "Viewing /etc/hosts in vim"), ranked by what needs you:
   new output, failures, running commands. Type to filter by name, summary, directory or
-  recent commands. The same miniatures and summaries live in a rail on the right (F3) and
-  in the sidebar; zoomed out, every pane shows its summary as a banner. Summaries come from
+  recent commands. The sidebar shows the same miniatures and summaries in tree order (an optional rail,
+  Ctrl+Shift+M, shows them ranked by attention); zoomed out, every pane shows its summary as a banner. Summaries come from
   Claude (through the API if `ANTHROPIC_API_KEY` is set, otherwise the `claude` CLI) and
   the model also names activities you did not name yourself.
 
@@ -53,16 +53,16 @@ only when its content changed, one at a time.
 
 ## Keys
 
-Press **F10** inside Canopy for the full list. The essentials:
+Press **Ctrl+Shift+H** inside Canopy for the full list. Function keys are left to your programs. The essentials:
 
 | Key | Action |
 |-----|--------|
 | Ctrl+Tab | find a terminal: miniatures + summaries, type to filter |
-| F3 | peek rail with the other terminals |
+| Ctrl+Shift+M | optional rail with the other terminals ranked by attention |
 | Ctrl+Shift+N / T | new child / sibling activity |
 | Ctrl+Shift+W | close activity |
-| F1 | overview of all panes |
-| F2 | sidebar |
+| Ctrl+Shift+O | overview of all panes |
+| Ctrl+Shift+B | sidebar |
 | Ctrl+Shift+P | command palette (actions, jump to activity, past commands) |
 | Ctrl+Shift+Up/Down | previous / next block |
 | Ctrl+Shift+Left/Right | fold / unfold block |

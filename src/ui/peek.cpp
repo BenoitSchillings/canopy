@@ -78,7 +78,7 @@ void PeekRail::draw(const DrawCtx& ctx) {
     float asc = font.metrics().ascent;
     RGBA fg = col(th.chrome_fg);
     r.draw_text(font, rect.x + 14, rect.y + 24, "OTHER TERMINALS", alpha(fg, 0.55f), gfx::STYLE_BOLD, 0.8f);
-    std::string hint = "Ctrl+Tab to search";
+    std::string hint = "Ctrl+Tab finds";
     float hw = r.measure_text(font, hint, gfx::STYLE_REGULAR, 0.75f);
     r.draw_text(font, rect.x + rect.w - hw - 12, rect.y + 24, hint, alpha(fg, 0.4f), gfx::STYLE_REGULAR, 0.75f);
     r.push_clip({rect.x, rect.y + 36, rect.w, rect.h - 36});

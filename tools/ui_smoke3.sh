@@ -32,7 +32,7 @@ shot 04-switcher-filtered 0.8
 xdotool key Return; sleep 1.5
 shot 05-jumped-to-vim 0.5
 xdotool type ":q!"; xdotool key Return; sleep 0.5
-xdotool key F1
+xdotool key ctrl+shift+o
 shot 06-overview-banners 1.5
 xdotool key Escape; sleep 1
 kill $PID; sleep 0.5; grep -v "slow flush" "$OUT/canopy.log" | tail -6

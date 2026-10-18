@@ -1,5 +1,6 @@
 #include "sidebar.h"
 #include "canvas.h"
+#include "peek.h"
 #include <algorithm>
 #include <cmath>
 
@@ -11,7 +12,9 @@ Sidebar::Sidebar(App& app) : app_(app) {}
 
 void Sidebar::build_rows() {
     rows_.clear();
-    const float ROW_H = 40.f, HDR_H = 30.f, PIN_H = 26.f;
+    const float HDR_H = 30.f, PIN_H = 26.f;
+    gfx::Renderer& rr = app_.renderer(); gfx::Font& font = app_.font();
+    float lh = app_.cell_h() * 0.85f + 2;
     float y = rect.y + 8 - scroll_;
     Row hdr; hdr.kind = Row::Header; hdr.label = "ACTIVITIES"; hdr.r = {rect.x, y, rect.w, HDR_H}; rows_.push_back(hdr); y += HDR_H;
     ActivityTree& t = app_.tree();
@@ -22,11 +25,18 @@ void Sidebar::build_rows() {
         Activity* a = t.get(id);
         if (!a) continue;
         Row r; r.kind = Row::Activity; r.id = id; r.depth = depth; r.has_children = !a->children.empty();
-        r.r = {rect.x, y, rect.w, ROW_H};
-        r.arrow = {rect.x + 8 + depth * 14.f, y + 10, 16, 20};
         r.label = a->name;
-        if (Pane* p = app_.pane(id)) r.sub = p->summary.empty() ? p->status_text() : p->summary;
-        rows_.push_back(r); y += ROW_H;
+        float h = 40.f;
+        if (Pane* p = app_.pane(id)) {
+            r.sub = p->summary.empty() ? p->local_summary() : p->summary;
+            float inner = rect.w - 24 - depth * 14.f;
+            float th = std::min(110.f, p->height() * inner / p->width());
+            size_t nl = PeekRail::wrap_text(rr, font, r.sub, inner, 0.85f, 2).size();
+            h = 6 + 22 + th + 4 + nl * lh + 8;
+        }
+        r.r = {rect.x, y, rect.w, h};
+        r.arrow = {rect.x + 6 + depth * 14.f, y + 4, 16, 20};
+        rows_.push_back(r); y += h;
         if (!a->collapsed) for (size_t i = a->children.size(); i-- > 0;) stack.push_back({a->children[i], depth + 1});
     }
     // pinned blocks
@@ -85,29 +95,44 @@ void Sidebar::draw(const DrawCtx& ctx) {
         if (focused) r.fill_rect({rect.x, row.r.y, 3, row.r.h}, col(th.accent));
         if (row.kind == Row::Activity) {
             float x = rect.x + 12 + row.depth * 14.f;
+            float inner = rect.w - 24 - row.depth * 14.f;
             Activity* a = app_.tree().get(row.id);
-            if (row.has_children) r.draw_text(font, x, row.r.y + 10 + asc * 0.8f, a && a->collapsed ? "▸" : "▾", alpha(fg, 0.7f), gfx::STYLE_REGULAR, 0.8f);
-            x += 16;
-            // status dot
             Pane* p = app_.pane(row.id);
+            float hy = row.r.y + 6;
+            if (row.has_children) r.draw_text(font, x - 4, hy + asc * 0.8f + 2, a && a->collapsed ? "▸" : "▾", alpha(fg, 0.7f), gfx::STYLE_REGULAR, 0.8f);
+            float nx = x + (row.has_children ? 12 : 0);
+            // status dot
             RGBA dot = alpha(fg, 0.3f); bool running = false;
             if (p && p->live()) {
                 const auto& bl = p->session->blocks().blocks();
+                dot = col(th.ok);
                 for (size_t k = bl.size(); k-- > 0;) {
                     if (bl[k].state == BlockState::Running) { running = true; dot = col(th.accent); break; }
                     if (bl[k].state == BlockState::Done) { dot = bl[k].exit_code == 0 ? col(th.ok) : col(th.error); break; }
                 }
-                if (bl.empty()) dot = col(th.ok);
             } else if (p && p->session) dot = col(th.error);
-            if (running) r.draw_text(font, x - 2, row.r.y + 9 + asc, SPIN[(int)(ctx.now * 8) % 4], dot, gfx::STYLE_REGULAR, 0.9f);
-            else r.circle(x + 4, row.r.y + 14, 3.5f, dot);
-            x += 16;
-            r.push_clip({x, row.r.y, rect.x + rect.w - x - 8, row.r.h});
-            r.draw_text(font, x, row.r.y + 6 + asc, row.label, focused ? col(th.foreground) : fg, gfx::STYLE_BOLD);
-            if (!row.sub.empty()) r.draw_text(font, x, row.r.y + 22 + asc * 0.8f, row.sub, alpha(fg, 0.6f), gfx::STYLE_REGULAR, 0.8f);
+            if (running) r.draw_text(font, nx - 1, hy + asc * 0.9f + 1, SPIN[(int)(ctx.now * 8) % 4], dot, gfx::STYLE_REGULAR, 0.9f);
+            else r.circle(nx + 4, hy + 10, 3.5f, dot);
+            float right = rect.x + rect.w - 10;
+            float name_w = right - (nx + 14) - 30;
+            r.push_clip({nx + 14, hy, name_w, 22});
+            r.draw_text(font, nx + 14, hy + asc * 0.95f, row.label, focused ? col(th.foreground) : fg, gfx::STYLE_BOLD, 0.95f);
             r.pop_clip();
-            if (p && p->unread && !focused) r.circle(rect.x + rect.w - 16, row.r.y + 14, 3.5f, col(th.warning));
-            if (a && !a->notes.empty()) r.draw_text(font, rect.x + rect.w - 30, row.r.y + 8 + asc * 0.8f, "✎", alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.8f);
+            if (p && p->unread && !focused) r.circle(right - 6, hy + 10, 3.5f, col(th.warning));
+            if (a && !a->notes.empty()) r.draw_text(font, right - 24, hy + asc * 0.8f + 1, "✎", alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.8f);
+            if (p) {
+                float th_ = std::min(110.f, p->height() * inner / p->width());
+                Rect tb = {x, hy + 22, inner, th_};
+                PeekRail::draw_miniature(app_, *p, tb, ctx, true);
+                r.rounded_rect_stroke(tb, 3, alpha(fg, focused ? 0.35f : 0.15f), 1.f);
+                float lh = app_.cell_h() * 0.85f + 2;
+                float y = tb.y + tb.h + 4;
+                for (auto& l : PeekRail::wrap_text(r, font, row.sub, inner, 0.85f, 2)) {
+                    r.draw_text(font, x, y + asc * 0.85f, l, alpha(fg, p->summary_ai ? 0.95f : 0.7f), p->summary_ai ? gfx::STYLE_REGULAR : gfx::STYLE_ITALIC, 0.85f);
+                    y += lh;
+                }
+                if (p->summary_pending) r.draw_text(font, right - 12, tb.y + tb.h + 4 + asc * 0.8f, SPIN[(int)(ctx.now * 8) % 4], alpha(col(th.accent), 0.8f), gfx::STYLE_REGULAR, 0.8f);
+            }
         } else {
             float x = rect.x + 16;
             r.draw_text(font, x, row.r.y + 5 + asc * 0.85f, "📌", fg, gfx::STYLE_REGULAR, 0.85f);
@@ -126,9 +151,9 @@ void Sidebar::draw(const DrawCtx& ctx) {
     float fy = rect.y + rect.h - 10;
     r.fill_rect({rect.x, fy - 54, rect.w - 1, 54}, col(th.chrome_bg));
     r.fill_rect({rect.x, fy - 54, rect.w - 1, 1}, alpha(fg, 0.12f));
-    r.draw_text(font, rect.x + 12, fy - 36, "^Tab find terminal   F3 rail", alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.8f);
-    r.draw_text(font, rect.x + 12, fy - 20, "F1 overview   ^⇧N new child", alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.8f);
-    r.draw_text(font, rect.x + 12, fy - 4, "^⇧P palette   ^⇧F search", alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.8f);
+    r.draw_text(font, rect.x + 12, fy - 36, "Ctrl+Tab  find terminal", alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.8f);
+    r.draw_text(font, rect.x + 12, fy - 20, "Ctrl+Shift+N  new child   Ctrl+Shift+O  overview", alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.8f);
+    r.draw_text(font, rect.x + 12, fy - 4, "Ctrl+Shift+H  all keys", alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.8f);
 }
 
 bool Sidebar::mouse_down(float sx, float sy, MouseButton b, int clicks, uint32_t mods) {

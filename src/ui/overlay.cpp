@@ -363,9 +363,9 @@ void Overlay::draw(const DrawCtx& ctx) {
             "",
             "Ctrl+Shift+N      new child activity        Ctrl+Shift+T      new sibling activity",
             "Ctrl+Shift+W      close activity            Ctrl+Shift+R      rename activity",
-            "Ctrl+Alt+Arrows   move focus between panes  F1                overview (zoom out to all)",
-            "F2                toggle sidebar            Ctrl+Shift+P      command palette",
-            "Ctrl+Tab          find a terminal (miniatures + summaries)   F3   peek rail",
+            "Ctrl+Alt+Arrows   move focus between panes  Ctrl+Shift+O      overview (zoom out to all)",
+            "Ctrl+Shift+B      toggle sidebar            Ctrl+Shift+P      command palette",
+            "Ctrl+Tab          find a terminal (miniatures + summaries)   Ctrl+Shift+M   peek rail",
             "Ctrl+wheel        zoom canvas               Ctrl+= / Ctrl+-   zoom in / out, Ctrl+0 reset",
             "Ctrl+Shift+= / -  font size                 Alt+drag / middle-drag   pan the canvas",
             "",
@@ -381,7 +381,7 @@ void Overlay::draw(const DrawCtx& ctx) {
             "",
             "Shell:  canopy new <name> · canopy note <text> · canopy name <name> · canopy mark",
             "",
-            "F10 or Esc closes this help",
+            "Ctrl+Shift+H or Esc closes this help",
         };
         int n = (int)(sizeof(lines) / sizeof(lines[0]));
         float lh = app_.cell_h() + 6;

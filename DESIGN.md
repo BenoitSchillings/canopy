@@ -34,7 +34,7 @@ click-to-sort on a header.
 With many sessions the problem is locating the one you need. Every pane carries a short
 summary of what it is doing, produced by Claude from a snapshot (recent commands, exit
 codes, output tails, current screen) and cached per content hash; a local heuristic is the
-instant placeholder. The peek rail (right, F3) shows the other terminals as live
+instant placeholder. The sidebar shows each activity with a live miniature and its summary; the optional peek rail (right, Ctrl+Shift+M) shows the other terminals as live
 miniatures with their summary and attention badges, ranked by new output / failure /
 running / recency. The switcher (Ctrl+Tab) shows all of them in a grid with a text
 filter. Auto-named activities take the model's suggested 2-4 word name.
@@ -42,9 +42,9 @@ filter. Auto-named activities take the model's suggested 2-4 word name.
 ### Spatial canvas
 Every activity is a *pane* on an infinite 2D canvas. Panes are auto-laid out
 as a tree (children to the right of parents) but can be dragged. Zoom with
-Ctrl+wheel or toggle *overview* (F1) which smoothly zooms out to show all
+Ctrl+wheel or toggle *overview* (Ctrl+Shift+O) which smoothly zooms out to show all
 panes as live miniatures; click one to fly to it. At zoom 1.0 text is
-pixel-exact. Sidebar (F2) shows the tree as an outliner.
+pixel-exact. Sidebar (Ctrl+Shift+B) shows the tree as an outliner with a miniature and summary per activity.
 
 ## 2. Architecture
 
@@ -127,7 +127,7 @@ Ctrl+Shift+C/V copy/paste · Shift+Insert / middle-click paste primary · Ctrl+S
 Ctrl+Shift+N new child activity · Ctrl+Shift+T new sibling · Ctrl+Shift+W close activity ·
 Ctrl+Shift+R rename · Ctrl+Shift+Up/Down previous/next block · Ctrl+Shift+Left/Right fold/unfold ·
 Ctrl+Shift+Enter re-run selected block · Ctrl+Shift+E next error line · Ctrl+Shift+J pretty JSON ·
-Ctrl+Shift+P command palette · Ctrl+Tab terminal switcher · F1 overview · F2 sidebar · F3 peek rail · F10 help · Ctrl+wheel / Ctrl+= / Ctrl+- zoom ·
+Ctrl+Shift+P command palette · Ctrl+Tab terminal switcher · Ctrl+Shift+O overview · Ctrl+Shift+B sidebar · Ctrl+Shift+M peek rail · Ctrl+Shift+H help (no function keys: they pass through to programs) · Ctrl+wheel / Ctrl+= / Ctrl+- zoom ·
 Ctrl+0 reset zoom · Ctrl+Shift+= / - font size · Ctrl+Alt+Arrows move between panes ·
 Alt+drag or middle-drag pan · Shift+PgUp/PgDn scrollback · Ctrl+click open path/URL ·
 gutter click selects a block (double-click folds, right-click menu) · table header click sorts.

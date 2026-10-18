@@ -41,12 +41,12 @@ struct Config {
     bool shell_integration = true;
     bool structured_output = true;
     bool sidebar_visible = true;
-    int sidebar_width = 240;
+    int sidebar_width = 280;
     bool animations = true;
     float animation_speed = 1.0f;
     int window_width = 1600, window_height = 1000;
     // Peek rail (miniatures of the other terminals) and AI summaries
-    bool peek_visible = true;
+    bool peek_visible = false;                  // the sidebar already shows miniatures; the rail is optional
     int peek_width = 330;
     bool ai_summaries = true;
     std::string ai_backend = "auto";            // auto | api | claude | local
