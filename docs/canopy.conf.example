@@ -98,3 +98,18 @@
 #warning = #e8b34a
 # Background of the infinite canvas behind the panes.
 #canvas_bg = #08090b
+
+# ---- Peek rail and AI summaries ----
+# Right-hand rail with live miniatures of the other terminals (F3 toggles).
+#peek_visible = true
+#peek_width = 330
+# Short natural-language summaries of what each terminal is doing. The summary
+# request contains recent commands, output tails and the current screen text of
+# that terminal, and is sent to Anthropic (via the API or the claude CLI).
+#ai_summaries = true
+# auto: API if ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN is set, else the claude CLI,
+# else local heuristics only.
+#ai_backend = auto
+#ai_model = claude-opus-5-5
+#ai_cli_model =
+#ai_min_interval = 20

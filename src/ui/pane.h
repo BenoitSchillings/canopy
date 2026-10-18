@@ -139,6 +139,21 @@ public:
     void clear_hover() { hover = {}; }
     int system_cursor() const;             // SDL_SYSTEM_CURSOR_* for current hover
 
+    // ---- summary (what this terminal is doing) ----
+    std::string summary;                   // shown in rail/switcher/sidebar; AI or heuristic
+    bool summary_ai = false;               // produced by the model
+    bool summary_pending = false;          // request in flight
+    double summary_time = 0;               // steady seconds when last set
+    uint64_t summary_hash = 0;             // context hash the AI summary was made from
+    bool summary_dirty = true;             // content changed since the last request
+    double summary_dirty_since = 0;
+    std::string summary_context() const;   // snapshot sent to the model
+    std::string local_summary() const;     // instant heuristic
+    uint64_t context_hash() const;
+    // Relevance for ranking in the rail/switcher: higher = more likely what the user is looking for.
+    float attention_score(double now, uint64_t focused) const;
+    std::vector<std::string> attention_badges(double now) const;
+
     // ---- state ----
     bool unread = false;
     double last_output = 0;
@@ -166,6 +181,7 @@ private:
     void draw_title(gfx::Renderer& r, gfx::Font& font, const DrawCtx& ctx);
     void draw_scrollbar(gfx::Renderer& r, const DrawCtx& ctx);
     void draw_dormant(gfx::Renderer& r, gfx::Font& font, const DrawCtx& ctx);
+    void draw_summary_banner(gfx::Renderer& r, gfx::Font& font, const DrawCtx& ctx);
     void scan_block(const Block& b, BlockView& v);
     void extend_selection(int64_t abs, int col);
     bool selected(int64_t abs, int col) const;

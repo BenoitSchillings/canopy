@@ -949,6 +949,7 @@ void Pane::draw(Renderer& r, Font& font, const DrawCtx& ctx) {
     if (s * cell_h() < 2.5f) {
         // Far zoom: card with the name only
         draw_title(r, font, ctx);
+        draw_summary_banner(r, font, ctx);
         r.rounded_rect_stroke(R, RADIUS, ctx.focused ? col(th.accent) : alpha(col(th.chrome_fg), 0.35f), ctx.focused ? 2.f : 1.f);
         return;
     }
@@ -999,6 +1000,7 @@ void Pane::draw(Renderer& r, Font& font, const DrawCtx& ctx) {
     r.pop_clip();
     draw_scrollbar(r, ctx);
     if (!session || !session->alive()) draw_dormant(r, font, ctx);
+    if (s < 0.6f && !ctx.in_rail) draw_summary_banner(r, font, ctx);
     // border
     RGBA border = ctx.focused ? col(th.accent) : alpha(col(th.chrome_fg), 0.3f);
     r.rounded_rect_stroke(R, RADIUS, border, ctx.focused ? 1.5f : 1.f);
@@ -1386,6 +1388,180 @@ void Pane::draw_dormant(Renderer& r, Font& font, const DrawCtx& ctx) {
     r.rounded_rect(box, 6, alpha(col(th.chrome_bg), 0.95f));
     r.rounded_rect_stroke(box, 6, alpha(col(th.accent), 0.6f), 1.f);
     r.draw_text(font, box.x + 12, box.y + 6 + font.metrics().ascent, msg, col(th.chrome_fg));
+}
+
+} // namespace canopy::ui
+
+
+namespace canopy::ui {
+
+// ---------------------------------------------------------------- summaries
+static std::string tail_lines(const std::vector<std::string>& lines, size_t n, size_t max_chars = 160) {
+    std::string out;
+    size_t start = lines.size() > n ? lines.size() - n : 0;
+    for (size_t i = start; i < lines.size(); i++) {
+        if (lines[i].empty()) continue;
+        out += "    " + (lines[i].size() > max_chars ? lines[i].substr(0, max_chars) + "…" : lines[i]) + "\n";
+    }
+    return out;
+}
+
+std::string Pane::summary_context() const {
+    std::string ctx;
+    const Activity* a = app_.tree().get(activity_id);
+    ctx += "activity: " + (a ? a->name : std::string("?")) + "  (cwd: " + pretty_path(cwd(), 80) + ")\n";
+    if (a && a->parent) if (const Activity* pa = app_.tree().get(a->parent)) ctx += "parent activity: " + pa->name + "\n";
+    if (a && !a->notes.empty()) ctx += "user notes: " + ellipsize(a->notes, 300) + "\n";
+    if (!session) {
+        ctx += "status: dormant (no shell running); history restored from a previous session\n";
+    } else if (!session->alive()) {
+        ctx += "status: shell exited\n";
+    } else {
+        const Terminal& t = session->term();
+        const auto& bl = session->blocks().blocks();
+        const Block* running = (!bl.empty() && bl.back().state == BlockState::Running) ? &bl.back() : nullptr;
+        if (t.modes().alt_screen) {
+            std::string prog = session->pty().foreground_name();
+            ctx += "status: full-screen program running: " + (prog.empty() ? std::string("unknown") : prog);
+            if (!last_title.empty()) ctx += "  (window title: " + last_title + ")";
+            if (running) ctx += "  started by: " + running->command;
+            ctx += "\n";
+        } else if (running) {
+            ctx += "status: command running for " + fmt_duration(app_.now() - running->start_time) + ": " + running->command + "\n";
+        } else ctx += "status: idle at the shell prompt\n";
+    }
+    // recent commands
+    std::vector<const Block*> recent;
+    if (session) { const auto& bl = session->blocks().blocks(); for (const Block& b : bl) if (!b.command.empty()) recent.push_back(&b); }
+    size_t limit = 8;
+    std::string cmds;
+    size_t start = recent.size() > limit ? recent.size() - limit : 0;
+    for (size_t i = start; i < recent.size(); i++) {
+        const Block& b = *recent[i];
+        std::string line = "  [";
+        if (b.state == BlockState::Done) line += "exit " + std::to_string(b.exit_code) + ", " + fmt_duration(b.duration());
+        else line += "running";
+        line += "] " + ellipsize(b.command, 200) + "\n";
+        cmds += line;
+        if (i + 3 >= recent.size()) cmds += tail_lines(block_lines(b), b.state == BlockState::Running ? 12 : 8);
+    }
+    if (cmds.empty() && !restored_blocks_.empty()) {
+        size_t rs = restored_blocks_.size() > limit ? restored_blocks_.size() - limit : 0;
+        for (size_t i = rs; i < restored_blocks_.size(); i++) {
+            const Block& b = restored_blocks_[i];
+            cmds += "  [exit " + std::to_string(b.exit_code) + "] " + ellipsize(b.command, 200) + "\n";
+            if (i + 2 >= restored_blocks_.size()) cmds += tail_lines(b.saved_output, 6);
+        }
+    }
+    if (!cmds.empty()) ctx += "recent commands (oldest first):\n" + cmds;
+    if (session && session->alive()) {
+        const Terminal& t = session->term();
+        bool show_screen = t.modes().alt_screen || recent.empty() || (!recent.empty() && recent.back()->state == BlockState::Running);
+        if (show_screen) {
+            std::string scr;
+            int shown = 0;
+            for (int y = t.rows() - 1; y >= 0 && shown < 24; y--) {
+                std::string txt = t.row(y).text();
+                if (txt.find_first_not_of(" \t") == std::string::npos) continue;
+                scr = "    " + (txt.size() > 160 ? txt.substr(0, 160) : txt) + "\n" + scr;
+                shown++;
+            }
+            if (!scr.empty()) ctx += "current screen (last lines):\n" + scr;
+        }
+    }
+    if (ctx.size() > 7000) ctx = ctx.substr(0, 7000) + "\n[truncated]";
+    return ctx;
+}
+
+uint64_t Pane::context_hash() const { return std::hash<std::string>{}(summary_context()); }
+
+std::string Pane::local_summary() const {
+    std::string dir = pretty_path(cwd(), 32);
+    if (!session) {
+        if (!restored_blocks_.empty()) return "Dormant · last ran " + ellipsize(restored_blocks_.back().command, 36) + " in " + dir;
+        return "Dormant shell in " + dir;
+    }
+    if (!session->alive()) return "Shell exited in " + dir;
+    const Terminal& t = session->term();
+    const auto& bl = session->blocks().blocks();
+    if (t.modes().alt_screen) {
+        std::string prog = session->pty().foreground_name();
+        std::string s = "In " + (prog.empty() ? std::string("a full-screen program") : prog);
+        if (!last_title.empty()) s += ": " + ellipsize(last_title, 40);
+        else if (!bl.empty() && !bl.back().command.empty()) s += " (" + ellipsize(bl.back().command, 36) + ")";
+        return s;
+    }
+    if (!bl.empty() && bl.back().state == BlockState::Running)
+        return "Running " + ellipsize(bl.back().command, 40) + " for " + fmt_duration(app_.now() - bl.back().start_time) + " in " + dir;
+    int n = 0; const Block* last = nullptr;
+    for (const Block& b : bl) if (b.state == BlockState::Done && !b.command.empty()) { n++; last = &b; }
+    if (last) return std::string(last->exit_code == 0 ? "Idle after " : "Idle after failed ") + ellipsize(last->command, 40) + " in " + dir;
+    return "Fresh shell in " + dir;
+}
+
+float Pane::attention_score(double now, uint64_t focused) const {
+    float s = 0;
+    if (activity_id == focused) s -= 1000;              // the current one: last in "find another" lists
+    if (unread) s += 50;
+    if (session && session->alive()) {
+        const auto& bl = session->blocks().blocks();
+        if (!bl.empty() && bl.back().state == BlockState::Running) s += 30;
+        for (size_t i = bl.size(); i-- > 0;) { if (bl[i].state == BlockState::Done && !bl[i].command.empty()) { if (bl[i].exit_code != 0 && unread) s += 25; break; } }
+        if (session->term().modes().alt_screen) s += 10;
+    } else if (session) s += 5;                          // exited
+    else s -= 20;                                        // dormant
+    double age = now - std::max(last_output, last_finish);
+    s += (float)std::max(0.0, 40.0 - age / 30.0);        // recency: fades over 20 minutes
+    return s;
+}
+
+std::vector<std::string> Pane::attention_badges(double now) const {
+    std::vector<std::string> b;
+    if (session && session->alive()) {
+        const auto& bl = session->blocks().blocks();
+        if (!bl.empty() && bl.back().state == BlockState::Running) b.push_back("⟳ " + fmt_duration(now - bl.back().start_time));
+        else if (session->term().modes().alt_screen) { std::string p = session->pty().foreground_name(); b.push_back(p.empty() ? "full-screen" : p); }
+        for (size_t i = bl.size(); i-- > 0;) if (bl[i].state == BlockState::Done && !bl[i].command.empty()) { if (bl[i].exit_code != 0) b.push_back("✗ exit " + std::to_string(bl[i].exit_code)); break; }
+    } else if (session) b.push_back("exited");
+    else b.push_back("dormant");
+    if (unread) b.push_back("● new output");
+    return b;
+}
+
+void Pane::draw_summary_banner(gfx::Renderer& r, gfx::Font& font, const DrawCtx& ctx) {
+    std::string text = summary.empty() ? local_summary() : summary;
+    if (text.empty()) return;
+    const Theme& th = app_.theme();
+    Rect R = rect();
+    float sc = clampf(1.0f / std::max(ctx.scale, 0.05f), 1.4f, 6.f) * 0.9f;   // readable at any zoom
+    float lh = app_.cell_h() * sc;
+    float pad = 10 * sc;
+    float maxw = R.w - 2 * pad;
+    // wrap into at most 3 lines
+    std::vector<std::string> lines; std::string cur;
+    size_t pos = 0;
+    while (pos < text.size() && lines.size() < 3) {
+        size_t sp = text.find(' ', pos);
+        std::string word = text.substr(pos, sp == std::string::npos ? std::string::npos : sp - pos);
+        std::string trial = cur.empty() ? word : cur + " " + word;
+        if (r.measure_text(font, trial, gfx::STYLE_BOLD, sc) > maxw && !cur.empty()) { lines.push_back(cur); cur = word; }
+        else cur = trial;
+        if (sp == std::string::npos) break;
+        pos = sp + 1;
+    }
+    if (!cur.empty() && lines.size() < 3) lines.push_back(cur);
+    float h = lines.size() * lh + 2 * pad;
+    Rect box = {R.x + pad * 0.6f, R.y + TITLE_H + pad * 0.6f, R.w - pad * 1.2f, h};
+    r.rounded_rect(box, 6 * sc, alpha(col(th.chrome_bg), 0.88f));
+    r.rounded_rect_stroke(box, 6 * sc, alpha(summary_ai ? col(th.accent) : col(th.chrome_fg), 0.5f), std::max(1.f, sc * 0.6f));
+    float y = box.y + pad + font.metrics().ascent * sc;
+    for (auto& l : lines) { r.draw_text(font, box.x + pad, y, l, col(th.foreground), gfx::STYLE_BOLD, sc); y += lh; }
+    // badges
+    auto badges = attention_badges(ctx.now);
+    if (!badges.empty()) {
+        std::string b; for (size_t i = 0; i < badges.size(); i++) b += (i ? "   " : "") + badges[i];
+        r.draw_text(font, box.x + pad, y + lh * 0.1f, b, alpha(col(th.warning), 0.95f), gfx::STYLE_REGULAR, sc * 0.85f);
+    }
 }
 
 } // namespace canopy::ui

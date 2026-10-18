@@ -150,6 +150,10 @@ static Json activity_to_json(const Activity& a) {
     j["children"] = Json(std::move(ch));
     j["name"] = Json(a.name);
     j["notes"] = Json(a.notes);
+    j["summary"] = Json(a.summary);
+    j["summary_time"] = Json(a.summary_time);
+    j["summary_ai"] = Json(a.summary_ai);
+    j["auto_named"] = Json(a.auto_named);
     j["cwd"] = Json(a.cwd);
     j["env"] = strings_to_json(a.env);
     j["created"] = Json((int64_t)a.created);
@@ -176,6 +180,10 @@ static std::unique_ptr<Activity> activity_from_json(const Json& j) {
     for (const auto& c : j["children"].as_array()) a->children.push_back((uint64_t)c.as_int(0));
     a->name = j["name"].as_string();
     a->notes = j["notes"].as_string();
+    a->summary = j["summary"].as_string();
+    a->summary_time = j["summary_time"].as_int();
+    a->summary_ai = j["summary_ai"].as_bool();
+    a->auto_named = j["auto_named"].as_bool();
     a->cwd = j["cwd"].as_string();
     a->env = strings_from_json(j["env"]);
     a->created = j["created"].as_int(0);

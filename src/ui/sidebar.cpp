@@ -25,7 +25,7 @@ void Sidebar::build_rows() {
         r.r = {rect.x, y, rect.w, ROW_H};
         r.arrow = {rect.x + 8 + depth * 14.f, y + 10, 16, 20};
         r.label = a->name;
-        if (Pane* p = app_.pane(id)) r.sub = p->status_text();
+        if (Pane* p = app_.pane(id)) r.sub = p->summary.empty() ? p->status_text() : p->summary;
         rows_.push_back(r); y += ROW_H;
         if (!a->collapsed) for (size_t i = a->children.size(); i-- > 0;) stack.push_back({a->children[i], depth + 1});
     }
@@ -126,9 +126,9 @@ void Sidebar::draw(const DrawCtx& ctx) {
     float fy = rect.y + rect.h - 10;
     r.fill_rect({rect.x, fy - 54, rect.w - 1, 54}, col(th.chrome_bg));
     r.fill_rect({rect.x, fy - 54, rect.w - 1, 1}, alpha(fg, 0.12f));
-    r.draw_text(font, rect.x + 12, fy - 36, "F1 overview   F2 sidebar", alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.8f);
-    r.draw_text(font, rect.x + 12, fy - 20, "^⇧P palette   ^⇧N new child", alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.8f);
-    r.draw_text(font, rect.x + 12, fy - 4, "^⇧↑↓ blocks   ^⇧F search", alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.8f);
+    r.draw_text(font, rect.x + 12, fy - 36, "^Tab find terminal   F3 rail", alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.8f);
+    r.draw_text(font, rect.x + 12, fy - 20, "F1 overview   ^⇧N new child", alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.8f);
+    r.draw_text(font, rect.x + 12, fy - 4, "^⇧P palette   ^⇧F search", alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.8f);
 }
 
 bool Sidebar::mouse_down(float sx, float sy, MouseButton b, int clicks, uint32_t mods) {

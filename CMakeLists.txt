@@ -23,7 +23,7 @@ find_package(Threads REQUIRED)
 set(VT_SRC src/core/cell.cpp src/core/pty.cpp src/core/terminal.cpp src/core/vt_parser.cpp src/core/keys.cpp
            src/core/blocks.cpp src/core/session.cpp)
 # ---- core: model (json, config, activity tree, structured output) ----
-set(MODEL_SRC src/core/json.cpp src/core/config.cpp src/core/activity.cpp src/core/structure.cpp)
+set(MODEL_SRC src/core/json.cpp src/core/config.cpp src/core/activity.cpp src/core/structure.cpp src/core/summarizer.cpp)
 
 foreach(f ${VT_SRC} ${MODEL_SRC})
   if(NOT EXISTS ${CMAKE_SOURCE_DIR}/${f})

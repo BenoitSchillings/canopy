@@ -365,6 +365,7 @@ void Overlay::draw(const DrawCtx& ctx) {
             "Ctrl+Shift+W      close activity            Ctrl+Shift+R      rename activity",
             "Ctrl+Alt+Arrows   move focus between panes  F1                overview (zoom out to all)",
             "F2                toggle sidebar            Ctrl+Shift+P      command palette",
+            "Ctrl+Tab          find a terminal (miniatures + summaries)   F3   peek rail",
             "Ctrl+wheel        zoom canvas               Ctrl+= / Ctrl+-   zoom in / out, Ctrl+0 reset",
             "Ctrl+Shift+= / -  font size                 Alt+drag / middle-drag   pan the canvas",
             "",

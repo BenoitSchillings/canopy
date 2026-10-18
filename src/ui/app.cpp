@@ -1,6 +1,8 @@
 #include "app.h"
 #include "canvas.h"
 #include "overlay.h"
+#include "peek.h"
+#include "switcher.h"
 #include "pane.h"
 #include "sidebar.h"
 #include "gfx/gl.h"
@@ -72,13 +74,19 @@ bool App::init(int argc, char** argv, std::string* err) {
     overlay_ = std::make_unique<Overlay>(*this);
     sidebar_->visible = cfg_.sidebar_visible;
     sidebar_->width = (float)cfg_.sidebar_width * window_->dpi_scale();
-    setup_actions();
-    {
-        float W = (float)window_->fb_width(), H = (float)window_->fb_height();
-        float sw = sidebar_->visible ? sidebar_->width : 0.f;
-        sidebar_->rect = {0, 0, sw, H};
-        canvas_->viewport = {sw, 0, W - sw, H};
+    rail_ = std::make_unique<PeekRail>(*this);
+    switcher_ = std::make_unique<Switcher>(*this);
+    rail_->visible = cfg_.peek_visible;
+    rail_->width = (float)cfg_.peek_width * window_->dpi_scale();
+    if (cfg_.ai_summaries) {
+        Summarizer::Options so;
+        so.backend = cfg_.ai_backend; so.api_model = cfg_.ai_model; so.cli_model = cfg_.ai_cli_model;
+        summarizer_.on_result = [this] { wake(); };
+        if (summarizer_.configure(so) == Summarizer::Backend::None && cfg_.ai_backend != "local")
+            fprintf(stderr, "canopy: no summary backend available (set ANTHROPIC_API_KEY or install the claude CLI); using local summaries\n");
     }
+    setup_actions();
+    layout_chrome();
     restore_tree();
     start_time_ = now();
     last_save_ = start_time_;
@@ -112,6 +120,7 @@ void App::create_pane_for(uint64_t id) {
     if (a->cols > 0 && a->rows > 0) { p->cols = a->cols; p->rows = a->rows; }
     p->x = a->x; p->y = a->y;
     if (!a->blocks.empty()) p->load_restored(a->blocks);
+    if (!a->summary.empty()) { p->summary = a->summary; p->summary_ai = a->summary_ai; p->summary_dirty = false; }
     panes_[id] = std::move(p);
     canvas_->sync_panes();
 }
@@ -129,7 +138,10 @@ void App::focus(uint64_t id, bool fly) {
     Pane* p = pane(id);
     if (!p) return;
     if (Pane* old = focused_pane()) if (old != p && old->live()) old->session->term().notify_focus(false);
+    if (focused_ && focused_ != id) request_summary(focused_, false);
     focused_ = id;
+    mru_.erase(std::remove(mru_.begin(), mru_.end(), id), mru_.end());
+    mru_.insert(mru_.begin(), id);
     p->unread = false;
     if (Activity* a = tree_.get(id)) a->last_active = (int64_t)time(nullptr);
     canvas_->bring_to_front(id);
@@ -146,9 +158,10 @@ uint64_t App::new_activity(uint64_t parent, const std::string& name, const std::
     std::string c = cwd;
     if (c.empty()) { if (Pane* pp = pane(parent)) c = pp->cwd(); }
     std::string n = name;
+    bool generated = n.empty();
     if (n.empty()) n = basename_of(c.empty() ? "activity" : c);
     uint64_t id = tree_.create(parent, n, c);
-    if (Activity* a = tree_.get(id)) { a->cols = cfg_.default_cols; a->rows = cfg_.default_rows; if (Activity* pa = tree_.get(parent)) { a->env = pa->env; pa->collapsed = false; } }
+    if (Activity* a = tree_.get(id)) { a->auto_named = generated; a->cols = cfg_.default_cols; a->rows = cfg_.default_rows; if (Activity* pa = tree_.get(parent)) { a->env = pa->env; pa->collapsed = false; } }
     create_pane_for(id);
     canvas_->layout();
     if (Pane* p = pane(id)) {
@@ -189,7 +202,7 @@ void App::close_activity(uint64_t id) {
         while (cur) { if (cur == id) { in = true; break; } Activity* c = tree_.get(cur); cur = c ? c->parent : 0; }
         if (in) gone.push_back(x);
     }
-    for (uint64_t g : gone) panes_.erase(g);
+    for (uint64_t g : gone) { panes_.erase(g); mru_.erase(std::remove(mru_.begin(), mru_.end(), g), mru_.end()); }
     tree_.remove(id);
     canvas_->sync_panes();
     canvas_->layout();
@@ -199,7 +212,7 @@ void App::close_activity(uint64_t id) {
 }
 
 void App::rename_activity(uint64_t id, const std::string& name) {
-    if (Activity* a = tree_.get(id)) { if (!name.empty()) a->name = name; }
+    if (Activity* a = tree_.get(id)) { if (!name.empty()) { a->name = name; a->auto_named = false; } }
     if (id == focused_) { title_ = name; window_->set_title(title_ + " — Canopy"); }
     tree_.notify(); save_state(); request_redraw();
 }
@@ -221,6 +234,7 @@ void App::on_shell_request(uint64_t activity, const std::string& kind, const std
 
 void App::on_block_finished(uint64_t activity, const Block& b) {
     request_redraw();
+    if (!b.command.empty()) request_summary(activity, false);
     if (b.command.empty()) return;
     bool unfocused = activity != focused_ || !window_->focused();
     if (unfocused && b.duration() >= 3.0) {
@@ -300,6 +314,7 @@ void App::save_state() {
         if (!a->auto_place) { a->x = p.x; a->y = p.y; }
         a->cols = p.cols; a->rows = p.rows;
         if (p.session) a->cwd = p.cwd();
+        if (p.summary_ai) { a->summary = p.summary; a->summary_ai = true; }
     }
     if (!tree_.save()) fprintf(stderr, "canopy: failed to save activity tree\n");
     last_save_ = now();
@@ -354,6 +369,10 @@ void App::setup_actions() {
     add("view.font_bigger", "Font size +", "Ctrl+Shift+=", [this] { set_font_size(cfg_.font_size_px + 1); });
     add("view.font_smaller", "Font size −", "Ctrl+Shift+-", [this] { set_font_size(cfg_.font_size_px - 1); });
     add("view.help", "Keyboard help", "F10", [this] { overlay_->toggle_help(); });
+    add("view.rail", "Toggle peek rail (other terminals)", "F3", [this] { rail_->visible = !rail_->visible; request_redraw(); });
+    add("view.switcher", "Find terminal…", "Ctrl+Tab", [this] { switcher_->show(); });
+    add("ai.refresh", "Refresh summary of this terminal", "", [this] { request_summary(focused_, true); });
+    add("ai.refresh_all", "Refresh all summaries", "", [this] { for (auto& kv : panes_) request_summary(kv.first, true); });
     add("block.prev", "Previous block", "Ctrl+Shift+Up", [this] { if (Pane* p = focused_pane()) p->select_block_relative(-1); });
     add("block.next", "Next block", "Ctrl+Shift+Down", [this] { if (Pane* p = focused_pane()) p->select_block_relative(1); });
     add("block.fold", "Fold selected block", "Ctrl+Shift+Left", [this] { if (Pane* p = focused_pane()) p->set_fold(p->selected_block, true); });
@@ -385,6 +404,8 @@ bool App::handle_global_key(const KeyEvent& ev) {
     if (ev.key == Key::F1 && !ctrl && !alt) { run_action("view.overview"); return true; }
     if (ev.key == Key::F2 && !ctrl && !alt) { run_action("view.sidebar"); return true; }
     if (ev.key == Key::F10 && !ctrl && !alt) { run_action("view.help"); return true; }
+    if (ev.key == Key::F3 && !ctrl && !alt) { run_action("view.rail"); return true; }
+    if (ctrl && !alt && ev.key == Key::Tab) { if (switcher_->open()) switcher_->step(shift ? -1 : 1); else switcher_->show(); return true; }
     if (ev.key == Key::Escape && canvas_->overview()) { canvas_->exit_overview(); return true; }
     if (ctrl && alt && !shift) {
         if (ev.key == Key::Left) { canvas_->focus_direction(-1, 0); return true; }
@@ -442,7 +463,12 @@ void App::handle_event(const gfx::Event& ev) {
         if (Pane* p = focused_pane()) if (p->live()) p->session->term().notify_focus(ev.type == T::FocusIn);
         request_redraw(); break;
     case T::Key: {
-        if (ev.repeat && (ev.key.key == Key::F1 || ev.key.key == Key::F2)) break;
+        if (ev.repeat && (ev.key.key == Key::F1 || ev.key.key == Key::F2 || ev.key.key == Key::F3)) break;
+        if (switcher_->open()) {
+            bool ctrl = ev.key.mods & MOD_CTRL;
+            if (ctrl && ev.key.key == Key::Tab) { switcher_->step((ev.key.mods & MOD_SHIFT) ? -1 : 1); break; }
+            if (switcher_->key(ev.key)) break;
+        }
         if (overlay_->active() && overlay_->key(ev.key)) break;
         if (handle_global_key(ev.key)) break;
         if (Pane* p = focused_pane()) {
@@ -452,12 +478,15 @@ void App::handle_event(const gfx::Event& ev) {
         break;
     }
     case T::Text:
+        if (switcher_->open() && switcher_->text(ev.key.text)) break;
         if (overlay_->active() && overlay_->text(ev.key.text)) break;
         if (Pane* p = focused_pane()) { if (!p->live()) ensure_session(*p); p->text_input(ev.key.text); }
         break;
     case T::MouseDown:
+        if (switcher_->open() && switcher_->mouse_down(ev.x, ev.y, ev.button)) break;
         if (overlay_->active() && overlay_->mouse_down(ev.x, ev.y, ev.button)) break;
         if (sidebar_->mouse_down(ev.x, ev.y, ev.button, ev.clicks, ev.mods)) break;
+        if (rail_->mouse_down(ev.x, ev.y, ev.button, ev.clicks)) break;
         canvas_->mouse_down(ev.x, ev.y, ev.button, ev.clicks, ev.mods);
         break;
     case T::MouseUp:
@@ -465,14 +494,19 @@ void App::handle_event(const gfx::Event& ev) {
         canvas_->mouse_up(ev.x, ev.y, ev.button, ev.mods);
         break;
     case T::MouseMove:
+        if (switcher_->open()) { switcher_->mouse_move(ev.x, ev.y); break; }
         if (overlay_->captures_mouse()) { overlay_->mouse_move(ev.x, ev.y); break; }
         sidebar_->mouse_move(ev.x, ev.y);
+        rail_->mouse_move(ev.x, ev.y);
+        if (rail_->visible && rail_->rect.contains(ev.x, ev.y)) { window_->set_cursor(SDL_SYSTEM_CURSOR_HAND); break; }
         canvas_->mouse_move(ev.x, ev.y, ev.mods, ev.button);
         window_->set_cursor(sidebar_->visible && sidebar_->rect.contains(ev.x, ev.y) ? SDL_SYSTEM_CURSOR_ARROW : canvas_->cursor_for(ev.x, ev.y));
         break;
     case T::Wheel:
         if (overlay_->active() && overlay_->wheel(ev.x, ev.y, ev.wheel_y)) break;
+        if (switcher_->open()) break;
         if (sidebar_->visible && sidebar_->rect.contains(ev.x, ev.y)) { sidebar_->wheel(ev.wheel_y); break; }
+        if (rail_->visible && rail_->rect.contains(ev.x, ev.y)) { rail_->wheel(ev.wheel_y); break; }
         canvas_->wheel(ev.x, ev.y, ev.wheel_x, ev.wheel_y, ev.mods);
         break;
     case T::DropFile:
@@ -506,16 +540,83 @@ int App::run() {
         frame(t, dt);
     }
     save_state();
+    summarizer_.stop();
     return 0;
 }
 
-void App::frame(double t, double dt) {
-    // layout: sidebar + canvas viewport
+void App::layout_chrome() {
     float W = (float)window_->fb_width(), H = (float)window_->fb_height();
     float sw = sidebar_->visible ? sidebar_->width : 0.f;
+    float rw = rail_->visible ? std::min(rail_->width, W * 0.4f) : 0.f;
     sidebar_->rect = {0, 0, sw, H};
-    canvas_->viewport = {sw, 0, W - sw, H};
+    rail_->rect = {W - rw, 0, rw, H};
+    canvas_->viewport = {sw, 0, W - sw - rw, H};
+}
+
+const char* App::summary_backend_name() const { return cfg_.ai_summaries ? summarizer_.backend_name() : "off"; }
+
+void App::request_summary(uint64_t id, bool force) {
+    Pane* p = pane(id);
+    if (!p) return;
+    p->summary_dirty = true;
+    p->summary_dirty_since = force ? now() - 10 : now();
+    if (force) { p->summary_time = 0; p->summary_hash = 0; }
+}
+
+void App::pump_summaries(double t) {
+    // results
+    for (SummaryResult& res : summarizer_.take_results()) {
+        Pane* p = pane(res.activity);
+        if (!p) continue;
+        p->summary_pending = false;
+        if (res.ok) {
+            p->summary = res.text; p->summary_ai = true; p->summary_hash = res.context_hash; p->summary_time = t;
+            if (Activity* a = tree_.get(res.activity)) {
+                a->summary = res.text; a->summary_ai = true; a->summary_time = (int64_t)time(nullptr);
+                if (a->auto_named && !res.name.empty() && res.name != a->name) {
+                    a->name = res.name;
+                    if (res.activity == focused_) { title_ = a->name; window_->set_title(title_ + " — Canopy"); }
+                    tree_.notify();
+                }
+            }
+        }
+        else { static int logged = 0; if (logged++ < 5) fprintf(stderr, "canopy: summary failed: %s\n", res.error.c_str()); p->summary_time = t; }
+        redraw_ = true;
+    }
+    // placeholders + periodic refresh for live full-screen / long-running panes
+    for (auto& kv : panes_) {
+        Pane& p = *kv.second;
+        if (p.summary.empty()) { p.summary = p.local_summary(); p.summary_ai = false; }
+        if (p.live() && (p.session->term().modes().alt_screen || (p.block_count() && p.block(p.block_count() - 1)->state == BlockState::Running)) && t - p.summary_time > 60 && !p.summary_dirty) { p.summary_dirty = true; p.summary_dirty_since = t; }
+    }
+    if (!summarizer_.available() || summarizer_.busy() || summarizer_.queued() || t - last_summary_submit_ < 1.0) return;
+    Pane* best = nullptr; float best_score = -1e9f;
+    for (auto& kv : panes_) {
+        Pane& p = *kv.second;
+        if (!p.summary_dirty || p.summary_pending) continue;
+        if (t - p.summary_dirty_since < 2.0) continue;                                    // debounce
+        if (p.summary_time > 0 && t - p.summary_time < cfg_.ai_min_interval) continue;
+        bool has_content = p.has_restored() || (p.live() && p.session->term().modes().alt_screen);
+        for (int i = 0; i < p.block_count() && !has_content; i++) if (!p.block(i)->command.empty()) has_content = true;
+        if (!has_content) { p.summary_dirty = false; continue; }
+        float sc = p.attention_score(t, 0) + (kv.first == focused_ ? -5 : 0);
+        if (sc > best_score) { best_score = sc; best = &p; }
+    }
+    if (!best) return;
+    SummaryRequest req; req.activity = best->activity_id; req.context = best->summary_context(); req.context_hash = std::hash<std::string>{}(req.context);
+    best->summary_dirty = false;
+    if (req.context_hash == best->summary_hash) return;
+    best->summary_pending = true;
+    last_summary_submit_ = t;
+    summarizer_.submit(std::move(req));
+    redraw_ = true;
+}
+
+void App::frame(double t, double dt) {
+    layout_chrome();
     for (auto& kv : panes_) if (kv.second->update(t)) redraw_ = true;
+    pump_summaries(t);
+    if (summarizer_.busy() && rail_->visible) redraw_ = true;   // spinner
     if (canvas_->update(t, dt)) redraw_ = true;
     if (overlay_->update(t)) redraw_ = true;
     // cursor blink
@@ -537,6 +638,8 @@ void App::draw(double t) {
     ctx.cfg = &cfg_; ctx.now = t; ctx.cursor_on = cursor_on_; ctx.window_focused = window_->focused();
     canvas_->draw(ctx);
     sidebar_->draw(ctx);
+    rail_->draw(ctx);
+    switcher_->draw(ctx);
     overlay_->draw(ctx);
     renderer_->end_frame();
     window_->swap();

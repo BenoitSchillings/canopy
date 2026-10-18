@@ -45,6 +45,14 @@ struct Config {
     bool animations = true;
     float animation_speed = 1.0f;
     int window_width = 1600, window_height = 1000;
+    // Peek rail (miniatures of the other terminals) and AI summaries
+    bool peek_visible = true;
+    int peek_width = 330;
+    bool ai_summaries = true;
+    std::string ai_backend = "auto";            // auto | api | claude | local
+    std::string ai_model = "claude-opus-5-5";   // Messages API model (api backend)
+    std::string ai_cli_model;                   // --model for the claude CLI backend (empty = CLI default)
+    int ai_min_interval = 20;                   // seconds between summaries of the same terminal
     Theme theme;
     std::string config_path;                       // where it was loaded from (may be empty)
 

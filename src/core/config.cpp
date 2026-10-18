@@ -203,6 +203,17 @@ bool Config::load(const std::string& path_in, std::string* err) {
     float_key("animation_speed", &animation_speed);
     int_key("window_width", &window_width);
     int_key("window_height", &window_height);
+    bool_key("peek_visible", &peek_visible);
+    int_key("peek_width", &peek_width);
+    bool_key("ai_summaries", &ai_summaries);
+    setters["ai_backend"] = [this](const std::string& v) {
+        std::string l = lower(v);
+        if (l != "auto" && l != "api" && l != "claude" && l != "local") return false;
+        ai_backend = l; return true;
+    };
+    str_key("ai_model", &ai_model);
+    str_key("ai_cli_model", &ai_cli_model);
+    int_key("ai_min_interval", &ai_min_interval);
     rgb_key("foreground", &theme.foreground);
     rgb_key("background", &theme.background);
     rgb_key("cursor", &theme.cursor);

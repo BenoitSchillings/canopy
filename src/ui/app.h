@@ -4,6 +4,7 @@
 #include "core/activity.h"
 #include "core/config.h"
 #include "core/session.h"
+#include "core/summarizer.h"
 #include "core/structure.h"
 #include "gfx/font.h"
 #include "gfx/renderer.h"
@@ -20,6 +21,8 @@ class Pane;
 class Canvas;
 class Sidebar;
 class Overlay;
+class PeekRail;
+class Switcher;
 
 struct DrawCtx {
     const Config* cfg = nullptr;
@@ -29,6 +32,7 @@ struct DrawCtx {
     bool cursor_on = true;      // blink phase
     bool overview = false;
     bool window_focused = true;
+    bool in_rail = false;       // drawn as a miniature in the peek rail / switcher
 };
 
 struct Action {
@@ -62,6 +66,11 @@ public:
     ActivityTree& tree() { return tree_; }
     Canvas& canvas() { return *canvas_; }
     Overlay& overlay() { return *overlay_; }
+    PeekRail& rail() { return *rail_; }
+    Switcher& switcher() { return *switcher_; }
+    const std::vector<uint64_t>& mru() const { return mru_; }
+    const char* summary_backend_name() const;
+    void request_summary(uint64_t activity, bool force);
     double now() const;
     void request_redraw() { redraw_ = true; }
     void wake();                                   // thread-safe
@@ -127,6 +136,13 @@ private:
     std::unique_ptr<Canvas> canvas_;
     std::unique_ptr<Sidebar> sidebar_;
     std::unique_ptr<Overlay> overlay_;
+    std::unique_ptr<PeekRail> rail_;
+    std::unique_ptr<Switcher> switcher_;
+    Summarizer summarizer_;
+    std::vector<uint64_t> mru_;
+    double last_summary_submit_ = 0;
+    void pump_summaries(double now);
+    void layout_chrome();
     std::vector<Action> actions_;
     uint64_t focused_ = 0;
     bool redraw_ = true;
@@ -141,6 +157,8 @@ private:
     friend class Canvas;
     friend class Sidebar;
     friend class Overlay;
+    friend class PeekRail;
+    friend class Switcher;
 };
 
 } // namespace canopy::ui

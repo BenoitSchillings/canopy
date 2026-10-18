@@ -27,6 +27,10 @@ struct Activity {
     std::vector<Block> blocks;         // persisted blocks (with saved_output tails) + mirrored live blocks
     uint64_t next_block_id = 1;
     std::string color;                 // optional accent "#rrggbb"
+    std::string summary;               // last AI/heuristic summary of what this activity is doing
+    int64_t summary_time = 0;          // unix seconds
+    bool summary_ai = false;           // true if produced by the model (not the heuristic)
+    bool auto_named = false;           // name was generated (from cwd or the summarizer), not typed by the user
 };
 
 class ActivityTree {
