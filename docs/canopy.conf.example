@@ -111,5 +111,7 @@
 # else local heuristics only.
 #ai_backend = auto
 #ai_model = claude-opus-5-5
+# API key for the api backend (alternatively export ANTHROPIC_API_KEY). Make this file chmod 600.
+#ai_api_key =
 #ai_cli_model =
 #ai_min_interval = 20

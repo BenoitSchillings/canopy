@@ -34,6 +34,7 @@ public:
     struct Options {
         std::string backend = "auto";      // auto | api | claude | local
         std::string api_model = "claude-opus-5-5";
+        std::string api_key;               // overrides ANTHROPIC_API_KEY when set
         std::string cli_model;             // empty => CLI default
         int timeout_seconds = 90;
     };
@@ -46,6 +47,8 @@ public:
     Backend backend() const { return backend_; }
     const char* backend_name() const;
     bool available() const { return backend_ != Backend::None; }
+    // Set when the API backend was abandoned at runtime (billing/auth error) and the CLI took over.
+    std::string fallback_notice();   // non-empty once, then cleared
 
     // Thread-safe. One request is processed at a time; a newer request for the same
     // activity replaces a queued (not yet started) one.
@@ -75,6 +78,8 @@ private:
     std::vector<SummaryResult> results_;
     std::atomic<bool> in_flight_{false};
     std::atomic<bool> running_{false};
+    std::string notice_;
+    int api_failures_ = 0;
 };
 
 // Runs argv with `input` on stdin, captures stdout/stderr; kills after timeout. Returns exit code

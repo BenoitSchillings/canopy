@@ -51,6 +51,7 @@ struct Config {
     bool ai_summaries = true;
     std::string ai_backend = "auto";            // auto | api | claude | local
     std::string ai_model = "claude-opus-5-5";   // Messages API model (api backend)
+    std::string ai_api_key;                     // Anthropic API key (overrides ANTHROPIC_API_KEY); keep the config file private
     std::string ai_cli_model;                   // --model for the claude CLI backend (empty = CLI default)
     int ai_min_interval = 20;                   // seconds between summaries of the same terminal
     Theme theme;

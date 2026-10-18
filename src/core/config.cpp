@@ -212,6 +212,7 @@ bool Config::load(const std::string& path_in, std::string* err) {
         ai_backend = l; return true;
     };
     str_key("ai_model", &ai_model);
+    str_key("ai_api_key", &ai_api_key);
     str_key("ai_cli_model", &ai_cli_model);
     int_key("ai_min_interval", &ai_min_interval);
     rgb_key("foreground", &theme.foreground);

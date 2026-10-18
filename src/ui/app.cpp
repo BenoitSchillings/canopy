@@ -80,7 +80,7 @@ bool App::init(int argc, char** argv, std::string* err) {
     rail_->width = (float)cfg_.peek_width * window_->dpi_scale();
     if (cfg_.ai_summaries) {
         Summarizer::Options so;
-        so.backend = cfg_.ai_backend; so.api_model = cfg_.ai_model; so.cli_model = cfg_.ai_cli_model;
+        so.backend = cfg_.ai_backend; so.api_model = cfg_.ai_model; so.cli_model = cfg_.ai_cli_model; so.api_key = cfg_.ai_api_key;
         summarizer_.on_result = [this] { wake(); };
         if (summarizer_.configure(so) == Summarizer::Backend::None && cfg_.ai_backend != "local")
             fprintf(stderr, "canopy: no summary backend available (set ANTHROPIC_API_KEY or install the claude CLI); using local summaries\n");
@@ -564,6 +564,7 @@ void App::request_summary(uint64_t id, bool force) {
 }
 
 void App::pump_summaries(double t) {
+    { std::string n = summarizer_.fallback_notice(); if (!n.empty()) { toast(n, 10.f); fprintf(stderr, "canopy: %s\n", n.c_str()); } }
     // results
     for (SummaryResult& res : summarizer_.take_results()) {
         Pane* p = pane(res.activity);

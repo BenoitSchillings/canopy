@@ -1,5 +1,6 @@
 // Structured-output detection: spans (paths, urls, errors, ...), tables, JSON.
 // Hand-written scanners only: this runs over every finished block's output.
+#include <cctype>
 #include "structure.h"
 #include "json.h"
 
@@ -168,8 +169,12 @@ bool match_keywords(std::string_view line, const KwTable& tbl) {
             if ((k.flags & KW_LEFT) && p > 0 && is_word((unsigned char)d[p - 1])) continue;
             if ((k.flags & KW_RIGHT) && p + k.len < n && is_word((unsigned char)d[p + k.len])) continue;
             if (k.flags & KW_NOT_AFTER_ZERO) {
+                // "0 failed", "0 tests failed", "0 checks FAILED": a zero count up to one word back
                 size_t q = p;
                 while (q > 0 && d[q - 1] == ' ') q--;
+                size_t w = q;
+                while (w > 0 && std::isalpha((unsigned char)d[w - 1])) w--;
+                if (w < q && w > 0 && d[w - 1] == ' ') { q = w; while (q > 0 && d[q - 1] == ' ') q--; }
                 if (q > 0 && d[q - 1] == '0' && (q == 1 || !is_word((unsigned char)d[q - 2]))) continue;
             }
             return true;

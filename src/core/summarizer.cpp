@@ -108,7 +108,7 @@ const char* Summarizer::backend_name() const {
 Summarizer::Backend Summarizer::configure(const Options& opts) {
     stop();
     opts_ = opts;
-    const char* k = getenv("ANTHROPIC_API_KEY"); api_key_ = k ? k : "";
+    const char* k = getenv("ANTHROPIC_API_KEY"); api_key_ = !opts.api_key.empty() ? opts.api_key : (k ? k : "");
     const char* t = getenv("ANTHROPIC_AUTH_TOKEN"); auth_token_ = t ? t : "";
     cli_path_ = find_in_path("claude");
     backend_ = Backend::None;
@@ -139,6 +139,8 @@ void Summarizer::submit(SummaryRequest req) {
 
 size_t Summarizer::queued() const { std::lock_guard<std::mutex> lk(const_cast<std::mutex&>(mu_)); return queue_.size(); }
 
+std::string Summarizer::fallback_notice() { std::lock_guard<std::mutex> lk(mu_); std::string n; n.swap(notice_); return n; }
+
 std::vector<SummaryResult> Summarizer::take_results() {
     std::lock_guard<std::mutex> lk(mu_);
     std::vector<SummaryResult> r; r.swap(results_);
@@ -168,6 +170,16 @@ void Summarizer::worker() {
             in_flight_ = true;
         }
         SummaryResult res = backend_ == Backend::Api ? run_api(req) : run_cli(req);
+        if (backend_ == Backend::Api && !res.ok && opts_.backend == "auto") {
+            // Billing/auth problems will not fix themselves this session: switch to the CLI if we can.
+            bool fatal = res.error.find("credit balance") != std::string::npos || res.error.find("authentication") != std::string::npos ||
+                         res.error.find("invalid x-api-key") != std::string::npos || res.error.find("permission") != std::string::npos || ++api_failures_ >= 3;
+            if (fatal && !cli_path_.empty()) {
+                backend_ = Backend::Cli;
+                { std::lock_guard<std::mutex> lk(mu_); notice_ = "API summaries unavailable (" + res.error.substr(0, 90) + "); using the claude CLI instead"; }
+                res = run_cli(req);
+            }
+        }
         in_flight_ = false;
         { std::lock_guard<std::mutex> lk(mu_); results_.push_back(std::move(res)); }
         if (on_result) on_result();
