@@ -7,6 +7,7 @@
 namespace canopy::ui {
 
 static const char* SPIN[] = {"◐", "◓", "◑", "◒"};
+static constexpr float GUTTER_W_EST = 18.f;
 
 Sidebar::Sidebar(App& app) : app_(app) {}
 
@@ -28,14 +29,21 @@ void Sidebar::build_rows() {
         r.label = a->name;
         float h = 40.f;
         if (Pane* p = app_.pane(id)) {
-            r.sub = p->summary.empty() ? p->local_summary() : p->summary;
+            r.sub = (p->waiting_for_user() || p->summary.empty()) ? p->local_summary() : p->summary;
             float inner = rect.w - 24 - depth * 14.f;
-            float th = std::min(110.f, p->height() * inner / p->width());
-            size_t nl = PeekRail::wrap_text(rr, font, r.sub, inner, 0.85f, 2).size();
-            h = 6 + 22 + th + 4 + nl * lh + 8;
+            if (compact) {
+                h = 6 + 20 + lh + 6;
+            } else {
+                float pw = GUTTER_W_EST + p->cols * app_.cell_w() + 12.f;
+                float ph = Pane::TITLE_H + p->rows * app_.cell_h() + 12.f;
+                float th = std::min(110.f, ph * inner / std::max(1.f, pw));
+                size_t nl = PeekRail::wrap_text(rr, font, r.sub, inner, 0.85f, 2).size();
+                h = 6 + 22 + th + 4 + nl * lh + 8;
+            }
         }
         r.r = {rect.x, y, rect.w, h};
         r.arrow = {rect.x + 6 + depth * 14.f, y + 4, 16, 20};
+        r.close_btn = {rect.x + rect.w - 30.f, y + 5.f, 18.f, 18.f};
         rows_.push_back(r); y += h;
         if (!a->collapsed) for (size_t i = a->children.size(); i-- > 0;) stack.push_back({a->children[i], depth + 1});
     }
@@ -79,10 +87,16 @@ void Sidebar::draw(const DrawCtx& ctx) {
         if (row.kind == Row::Header) {
             r.draw_text(font, rect.x + 14, row.r.y + 18, row.label, alpha(fg, 0.55f), gfx::STYLE_BOLD, 0.8f);
             if (row.label == "ACTIVITIES") {
+                bool hot = hover_ == (int)i;
+                Rect cb = {rect.x + rect.w - 54, row.r.y + 4, 20, 20};
+                std::string cicon = compact ? "▤" : "☰";
+                float cw = r.measure_text(font, cicon);
+                r.rounded_rect(cb, 5, alpha(col(th.accent), compact ? 0.45f : (hot ? 0.3f : 0.14f)));
+                r.draw_text(font, cb.x + (cb.w - cw) / 2, cb.y + 15, cicon, col(th.foreground));
+
                 std::string plus = "+";
                 float w = r.measure_text(font, plus);
                 Rect pb = {rect.x + rect.w - 30, row.r.y + 4, 20, 20};
-                bool hot = hover_ == (int)i;
                 r.rounded_rect(pb, 5, alpha(col(th.accent), hot ? 0.5f : 0.18f));
                 r.draw_text(font, pb.x + (pb.w - w) / 2, pb.y + 15, plus, col(th.foreground));
             }
@@ -103,35 +117,65 @@ void Sidebar::draw(const DrawCtx& ctx) {
             float nx = x + (row.has_children ? 12 : 0);
             // status dot
             RGBA dot = alpha(fg, 0.3f); bool running = false;
+            bool waiting = p && p->waiting_for_user();
             if (p && p->live()) {
                 const auto& bl = p->session->blocks().blocks();
                 dot = col(th.ok);
-                for (size_t k = bl.size(); k-- > 0;) {
-                    if (bl[k].state == BlockState::Running) { running = true; dot = col(th.accent); break; }
-                    if (bl[k].state == BlockState::Done) { dot = bl[k].exit_code == 0 ? col(th.ok) : col(th.error); break; }
+                if (waiting) {
+                    dot = col(th.warning);
+                } else {
+                    for (size_t k = bl.size(); k-- > 0;) {
+                        if (bl[k].state == BlockState::Running) { running = true; dot = col(th.accent); break; }
+                        if (bl[k].state == BlockState::Done) { dot = bl[k].exit_code == 0 ? col(th.ok) : col(th.error); break; }
+                    }
                 }
             } else if (p && p->session) dot = col(th.error);
-            if (running) r.draw_text(font, nx - 1, hy + asc * 0.9f + 1, SPIN[(int)(ctx.now * 8) % 4], dot, gfx::STYLE_REGULAR, 0.9f);
+            if (!focused && waiting) r.fill_rect({rect.x, row.r.y, 3, row.r.h}, col(th.warning));
+            if (waiting) {
+                const char* icon = (p->agent_state() == Pane::AgentState::NeedsApproval) ? "⚡" : "⏸";
+                r.draw_text(font, nx - 1, hy + asc * 0.9f + 1, icon, dot, gfx::STYLE_BOLD, 0.85f);
+            } else if (running) r.draw_text(font, nx - 1, hy + asc * 0.9f + 1, SPIN[(int)(ctx.now * 8) % 4], dot, gfx::STYLE_REGULAR, 0.9f);
             else r.circle(nx + 4, hy + 10, 3.5f, dot);
-            float right = rect.x + rect.w - 10;
-            float name_w = right - (nx + 14) - 30;
-            r.push_clip({nx + 14, hy, name_w, 22});
+            bool hot_close = (int)i == hover_close_;
+            RGBA cb_bg = hot_close ? alpha(col(th.error), 0.85f) : alpha(fg, hot || focused ? 0.14f : 0.06f);
+            RGBA cb_fg = hot_close ? col(th.foreground) : alpha(fg, hot || focused ? 0.85f : 0.45f);
+            r.rounded_rect(row.close_btn, 4.f, cb_bg);
+            float xw = r.measure_text(font, "×", gfx::STYLE_BOLD, 0.85f);
+            r.draw_text(font, row.close_btn.x + (row.close_btn.w - xw) / 2.f, row.close_btn.y + 2 + asc * 0.85f, "×", cb_fg, gfx::STYLE_BOLD, 0.85f);
+            float right = row.close_btn.x - 6;
+            float name_w = right - (nx + 14) - 24;
+            r.push_clip({nx + 14, hy, std::max(10.f, name_w), 22});
             r.draw_text(font, nx + 14, hy + asc * 0.95f, row.label, focused ? col(th.foreground) : fg, gfx::STYLE_BOLD, 0.95f);
             r.pop_clip();
             if (p && p->unread && !focused) r.circle(right - 6, hy + 10, 3.5f, col(th.warning));
-            if (a && !a->notes.empty()) r.draw_text(font, right - 24, hy + asc * 0.8f + 1, "✎", alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.8f);
+            if (a && !a->notes.empty()) r.draw_text(font, right - 22, hy + asc * 0.8f + 1, "✎", alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.8f);
             if (p) {
-                float th_ = std::min(110.f, p->height() * inner / p->width());
-                Rect tb = {x, hy + 22, inner, th_};
-                PeekRail::draw_miniature(app_, *p, tb, ctx, true);
-                r.rounded_rect_stroke(tb, 3, alpha(fg, focused ? 0.35f : 0.15f), 1.f);
                 float lh = app_.cell_h() * 0.85f + 2;
-                float y = tb.y + tb.h + 4;
-                for (auto& l : PeekRail::wrap_text(r, font, row.sub, inner, 0.85f, 2)) {
-                    r.draw_text(font, x, y + asc * 0.85f, l, alpha(fg, p->summary_ai ? 0.95f : 0.7f), p->summary_ai ? gfx::STYLE_REGULAR : gfx::STYLE_ITALIC, 0.85f);
-                    y += lh;
+                if (compact) {
+                    // Tree guide line for nested activities
+                    for (int d = 1; d <= row.depth; d++) {
+                        float gx = rect.x + 10 + (d - 1) * 14.f;
+                        r.fill_rect({gx, row.r.y, 1.f, row.r.h}, alpha(fg, 0.14f));
+                    }
+                    float y = hy + 20;
+                    auto lines = PeekRail::wrap_text(r, font, row.sub, inner, 0.82f, 1);
+                    if (!lines.empty()) {
+                        r.draw_text(font, x, y + asc * 0.82f, lines[0], alpha(fg, p->summary_ai ? 0.85f : 0.6f), p->summary_ai ? gfx::STYLE_REGULAR : gfx::STYLE_ITALIC, 0.82f);
+                    }
+                } else {
+                    float pw = GUTTER_W_EST + p->cols * app_.cell_w() + 12.f;
+                    float ph = Pane::TITLE_H + p->rows * app_.cell_h() + 12.f;
+                    float th_ = std::min(110.f, ph * inner / std::max(1.f, pw));
+                    Rect tb = {x, hy + 22, inner, th_};
+                    PeekRail::draw_miniature(app_, *p, tb, ctx, true);
+                    r.rounded_rect_stroke(tb, 3, alpha(fg, focused ? 0.35f : 0.15f), 1.f);
+                    float y = tb.y + tb.h + 4;
+                    for (auto& l : PeekRail::wrap_text(r, font, row.sub, inner, 0.85f, 2)) {
+                        r.draw_text(font, x, y + asc * 0.85f, l, alpha(fg, p->summary_ai ? 0.95f : 0.7f), p->summary_ai ? gfx::STYLE_REGULAR : gfx::STYLE_ITALIC, 0.85f);
+                        y += lh;
+                    }
+                    if (p->summary_pending) r.draw_text(font, right - 12, tb.y + tb.h + 4 + asc * 0.8f, SPIN[(int)(ctx.now * 8) % 4], alpha(col(th.accent), 0.8f), gfx::STYLE_REGULAR, 0.8f);
                 }
-                if (p->summary_pending) r.draw_text(font, right - 12, tb.y + tb.h + 4 + asc * 0.8f, SPIN[(int)(ctx.now * 8) % 4], alpha(col(th.accent), 0.8f), gfx::STYLE_REGULAR, 0.8f);
             }
         } else {
             float x = rect.x + 16;
@@ -163,7 +207,10 @@ bool Sidebar::mouse_down(float sx, float sy, MouseButton b, int clicks, uint32_t
         const Row& row = rows_[i];
         if (!row.r.contains(sx, sy)) continue;
         if (row.kind == Row::Header) {
-            if (row.label == "ACTIVITIES" && sx > rect.x + rect.w - 34 && b == MouseButton::Left) app_.run_action("activity.new_child");
+            if (row.label == "ACTIVITIES" && b == MouseButton::Left) {
+                if (sx >= rect.x + rect.w - 32) app_.run_action("activity.new_child");
+                else if (sx >= rect.x + rect.w - 58 && sx < rect.x + rect.w - 32) { compact = !compact; app_.request_redraw(); }
+            }
             return true;
         }
         if (row.kind == Row::Pinned) {
@@ -175,6 +222,10 @@ bool Sidebar::mouse_down(float sx, float sy, MouseButton b, int clicks, uint32_t
         }
         Activity* a = app_.tree().get(row.id);
         if (b == MouseButton::Left) {
+            if (row.close_btn.contains(sx, sy)) {
+                app_.close_activity(row.id);
+                return true;
+            }
             if (row.has_children && row.arrow.contains(sx, sy) && a) {
                 a->collapsed = !a->collapsed;
                 app_.canvas().layout();
@@ -184,16 +235,22 @@ bool Sidebar::mouse_down(float sx, float sy, MouseButton b, int clicks, uint32_t
             app_.focus(row.id, true);
             if (clicks == 2) app_.run_action("activity.rename");
             else { drag_id_ = row.id; drag_y_ = sy; dragging_ = false; }
+        } else if (b == MouseButton::Middle) {
+            app_.close_activity(row.id);
         } else if (b == MouseButton::Right) {
-            app_.focus(row.id, false);
+            uint64_t rid = row.id;
+            app_.focus(rid, false);
             std::vector<MenuItem> items = {
                 {"New child activity", [this] { app_.run_action("activity.new_child"); }},
                 {"Rename…", [this] { app_.run_action("activity.rename"); }},
                 {"Add note…", [this] { app_.run_action("activity.note"); }},
                 {a && a->collapsed ? "Expand" : "Collapse", [this, a] { if (a) { a->collapsed = !a->collapsed; app_.canvas().layout(); } }, a && !a->children.empty()},
                 {"-", nullptr},
-                {"Close activity", [this] { app_.run_action("activity.close"); }},
+                {"Close activity", [this, rid] { app_.close_activity(rid); }},
             };
+            if (a && !a->children.empty()) {
+                items.push_back({"Close activity & children", [this, rid] { app_.close_subtree(rid); }});
+            }
             app_.show_menu(sx, sy, std::move(items));
         }
         return true;
@@ -203,10 +260,17 @@ bool Sidebar::mouse_down(float sx, float sy, MouseButton b, int clicks, uint32_t
 
 void Sidebar::mouse_move(float sx, float sy) {
     hover_ = -1;
+    hover_close_ = -1;
     if (!visible) return;
     if (drag_id_ && std::fabs(sy - drag_y_) > 6) dragging_ = true;
     if (!rect.contains(sx, sy) && !dragging_) return;
-    for (size_t i = 0; i < rows_.size(); i++) if (rows_[i].r.contains(sx, sy)) { hover_ = (int)i; break; }
+    for (size_t i = 0; i < rows_.size(); i++) {
+        if (rows_[i].r.contains(sx, sy)) {
+            hover_ = (int)i;
+            if (rows_[i].kind == Row::Activity && rows_[i].close_btn.contains(sx, sy)) hover_close_ = (int)i;
+            break;
+        }
+    }
     drop_index_ = dragging_ ? hover_ : -1;
     app_.request_redraw();
 }

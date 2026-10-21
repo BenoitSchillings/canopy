@@ -19,7 +19,8 @@ struct Activity {
     std::string cwd;                   // last known cwd
     std::vector<std::string> env;      // extra KEY=VALUE for the shell
     int64_t created = 0, last_active = 0;  // unix seconds
-    bool collapsed = false;            // in sidebar / canvas
+    bool collapsed = false;            // in sidebar / canvas (hide children)
+    bool minimized = false;            // on canvas: collapse pane body to title + 1-line summary
     // canvas placement (world units == pixels at zoom 1). 0,0 + auto=true means auto-layout.
     float x = 0, y = 0;
     bool auto_place = true;
@@ -31,6 +32,7 @@ struct Activity {
     int64_t summary_time = 0;          // unix seconds
     bool summary_ai = false;           // true if produced by the model (not the heuristic)
     bool auto_named = false;           // name was generated (from cwd or the summarizer), not typed by the user
+    std::vector<std::string> history;  // persisted per-terminal command history (mirrored to HISTFILE)
 };
 
 class ActivityTree {
@@ -42,6 +44,9 @@ public:
     // Create a child under parent (0 => root). Returns the new id.
     uint64_t create(uint64_t parent, const std::string& name, const std::string& cwd);
     void remove(uint64_t id);                              // removes subtree
+    // Removes a single activity `id`, reparenting its children (or promoting its first child if `id` is root).
+    // Returns the replacement activity id (or 0 if `id` could not be removed, e.g. the last remaining activity).
+    uint64_t remove_one(uint64_t id);
     void move(uint64_t id, uint64_t new_parent, int index = -1);
     void reorder(uint64_t id, int index);
     std::vector<uint64_t> preorder() const;                // root first, depth-first
@@ -58,6 +63,15 @@ public:
     bool save(const std::string& path = "") const;
     bool load(const std::string& path = "");
     static std::string default_path();
+
+    // Persistent per-terminal shell history files (~/.local/share/canopy/history/activity-<id>.history).
+    static std::string history_dir();
+    static std::string history_path(uint64_t id, const std::string& dir = "");
+    static std::vector<std::string> load_history(uint64_t id, const std::string& dir = "");
+    static bool save_history(uint64_t id, const std::vector<std::string>& commands, const std::string& dir = "");
+    static bool append_history(uint64_t id, const std::string& command, const std::string& dir = "");
+    static bool copy_history(uint64_t from_id, uint64_t to_id, const std::string& dir = "");
+    static void remove_history(uint64_t id, const std::string& dir = "");
 
     std::function<void()> on_changed;   // structural change notification (create/remove/move/rename)
     void notify() { if (on_changed) on_changed(); }

@@ -142,7 +142,7 @@ void App::focus(uint64_t id, bool fly) {
     focused_ = id;
     mru_.erase(std::remove(mru_.begin(), mru_.end(), id), mru_.end());
     mru_.insert(mru_.begin(), id);
-    p->unread = false;
+    p->clear_attention();
     if (Activity* a = tree_.get(id)) a->last_active = (int64_t)time(nullptr);
     canvas_->bring_to_front(id);
     ensure_session(*p);
@@ -161,7 +161,18 @@ uint64_t App::new_activity(uint64_t parent, const std::string& name, const std::
     bool generated = n.empty();
     if (n.empty()) n = basename_of(c.empty() ? "activity" : c);
     uint64_t id = tree_.create(parent, n, c);
-    if (Activity* a = tree_.get(id)) { a->auto_named = generated; a->cols = cfg_.default_cols; a->rows = cfg_.default_rows; if (Activity* pa = tree_.get(parent)) { a->env = pa->env; pa->collapsed = false; } }
+    if (Activity* a = tree_.get(id)) {
+        a->auto_named = generated; a->cols = cfg_.default_cols; a->rows = cfg_.default_rows;
+        if (Activity* pa = tree_.get(parent)) { a->env = pa->env; pa->collapsed = false; a->history = pa->history; }
+    }
+    if (!ActivityTree::copy_history(parent, id)) {
+        if (Pane* pp = pane(parent)) {
+            std::vector<std::string> cmds;
+            for (const Block& b : pp->restored_blocks()) if (!b.command.empty()) cmds.push_back(b.command);
+            for (int i = 0; i < pp->block_count(); i++) if (const Block* b = pp->block(i); b && !b->command.empty()) cmds.push_back(b->command);
+            if (!cmds.empty()) ActivityTree::save_history(id, cmds);
+        }
+    }
     create_pane_for(id);
     canvas_->layout();
     if (Pane* p = pane(id)) {
@@ -182,27 +193,48 @@ uint64_t App::run_in_child(uint64_t parent, const std::string& command, const st
 }
 
 void App::close_activity(uint64_t id) {
-    if (id == tree_.root()) { toast("The root activity cannot be closed"); return; }
+    if (tree_.count() <= 1) { toast("Cannot close the last terminal"); return; }
     Activity* a = tree_.get(id);
     if (!a) return;
     static uint64_t pending_close = 0; static double pending_time = 0;
     Pane* p = pane(id);
     bool busy = p && p->live() && !p->at_prompt();
-    bool kids = !a->children.empty();
-    if ((busy || kids) && !(pending_close == id && now() - pending_time < 4.0)) {
+    if (busy && !(pending_close == id && now() - pending_time < 4.0)) {
         pending_close = id; pending_time = now();
-        toast(std::string(kids ? "Activity has children" : "A command is running") + " — close again to confirm");
+        toast("A command is running — close again to confirm");
         return;
     }
     pending_close = 0;
+    panes_.erase(id);
+    mru_.erase(std::remove(mru_.begin(), mru_.end(), id), mru_.end());
+    ActivityTree::remove_history(id);
+    uint64_t next = tree_.remove_one(id);
+    canvas_->sync_panes();
+    canvas_->layout();
+    if (!pane(focused_)) {
+        uint64_t target = (!mru_.empty() && pane(mru_.front())) ? mru_.front() : (next ? next : tree_.root());
+        focus(target, true);
+    }
+    tree_.notify();
+    save_state();
+}
+
+void App::close_subtree(uint64_t id) {
+    if (id == tree_.root()) { toast("The root subtree cannot be closed"); return; }
+    Activity* a = tree_.get(id);
+    if (!a) return;
     uint64_t parent = a->parent;
     std::vector<uint64_t> gone;
-    for (uint64_t x : tree_.preorder()) { // collect subtree
+    for (uint64_t x : tree_.preorder()) {
         uint64_t cur = x; bool in = false;
         while (cur) { if (cur == id) { in = true; break; } Activity* c = tree_.get(cur); cur = c ? c->parent : 0; }
         if (in) gone.push_back(x);
     }
-    for (uint64_t g : gone) { panes_.erase(g); mru_.erase(std::remove(mru_.begin(), mru_.end(), g), mru_.end()); }
+    for (uint64_t g : gone) {
+        panes_.erase(g);
+        mru_.erase(std::remove(mru_.begin(), mru_.end(), g), mru_.end());
+        ActivityTree::remove_history(g);
+    }
     tree_.remove(id);
     canvas_->sync_panes();
     canvas_->layout();
@@ -230,11 +262,15 @@ void App::on_shell_request(uint64_t activity, const std::string& kind, const std
     if (kind == "new") { Pane* p = pane(activity); new_activity(activity, payload, p ? p->cwd() : "", true); }
     else if (kind == "note") add_note(activity, payload);
     else if (kind == "name") rename_activity(activity, payload);
+    else if (kind == "close") close_activity(activity);
 }
 
 void App::on_block_finished(uint64_t activity, const Block& b) {
     request_redraw();
-    if (!b.command.empty()) request_summary(activity, false);
+    if (!b.command.empty()) {
+        request_summary(activity, false);
+        save_state();
+    }
     if (b.command.empty()) return;
     bool unfocused = activity != focused_ || !window_->focused();
     if (unfocused && b.duration() >= 3.0) {
@@ -282,14 +318,62 @@ static void spawn_detached(const std::vector<std::string>& argv) {
     } else if (pid > 0) { int st; waitpid(pid, &st, 0); }
 }
 
-void App::open_url(const std::string& url) { spawn_detached({"xdg-open", url}); toast("Opening " + ellipsize(url, 50)); }
+void App::open_url(const std::string& url) {
+    if (url.compare(0, 7, "file://") == 0) {
+        std::string rest = url.substr(7);
+        size_t slash = rest.find('/');
+        if (slash != std::string::npos) rest = rest.substr(slash);
+        int line = 0;
+        size_t hash = rest.rfind('#');
+        if (hash != std::string::npos) {
+            std::string frag = rest.substr(hash + 1);
+            rest.resize(hash);
+            if (!frag.empty() && (frag[0] == 'L' || frag[0] == 'l')) frag.erase(0, 1);
+            if (!frag.empty() && std::isdigit((unsigned char)frag[0])) line = std::atoi(frag.c_str());
+        } else {
+            size_t colon = rest.rfind(':');
+            if (colon != std::string::npos && colon + 1 < rest.size() && std::isdigit((unsigned char)rest[colon + 1])) {
+                line = std::atoi(rest.c_str() + colon + 1);
+                rest.resize(colon);
+            }
+        }
+        std::string decoded;
+        decoded.reserve(rest.size());
+        for (size_t i = 0; i < rest.size(); ++i) {
+            if (rest[i] == '%' && i + 2 < rest.size() && std::isxdigit((unsigned char)rest[i + 1]) && std::isxdigit((unsigned char)rest[i + 2])) {
+                decoded.push_back((char)std::strtol(rest.substr(i + 1, 2).c_str(), nullptr, 16));
+                i += 2;
+            } else {
+                decoded.push_back(rest[i]);
+            }
+        }
+        Pane* fp = focused_pane();
+        open_path(decoded, line, fp ? fp->cwd() : "", focused_);
+        return;
+    }
+    spawn_detached({"xdg-open", url});
+    toast("Opening " + ellipsize(url, 50));
+}
 
 void App::open_path(const std::string& path, int line, const std::string& cwd, uint64_t from) {
-    std::string p = path;
-    if (!p.empty() && p[0] == '~') p = home_dir() + p.substr(1);
-    if (p.empty() || p[0] != '/') p = cwd + "/" + p;
+    auto resolve = [&](const std::string& cand) {
+        std::string r = cand;
+        if (!r.empty() && r[0] == '~') r = home_dir() + r.substr(1);
+        if (r.empty() || r[0] != '/') r = cwd.empty() ? r : (cwd + "/" + r);
+        return r;
+    };
+    std::string p = resolve(path);
     struct stat st;
-    if (stat(p.c_str(), &st) != 0) { toast("Not found: " + ellipsize(path, 40)); return; }
+    if (stat(p.c_str(), &st) != 0) {
+        if (path.size() > 2 && (path.compare(0, 2, "a/") == 0 || path.compare(0, 2, "b/") == 0)) {
+            std::string alt = resolve(path.substr(2));
+            if (stat(alt.c_str(), &st) == 0) p = alt;
+            else { toast("Not found: " + ellipsize(path, 40)); return; }
+        } else {
+            toast("Not found: " + ellipsize(path, 40));
+            return;
+        }
+    }
     Pane* src = pane(from);
     if (S_ISDIR(st.st_mode)) {
         if (src && src->at_prompt()) src->write("cd " + shell_quote(p) + "\r");
@@ -311,6 +395,11 @@ void App::save_state() {
         if (!a) continue;
         Pane& p = *kv.second;
         a->blocks = p.export_blocks(60, 200);
+        auto hist = ActivityTree::load_history(kv.first);
+        if (!hist.empty()) {
+            if (hist.size() > 500) hist.erase(hist.begin(), hist.begin() + (long)(hist.size() - 500));
+            a->history = std::move(hist);
+        }
         if (!a->auto_place) { a->x = p.x; a->y = p.y; }
         a->cols = p.cols; a->rows = p.rows;
         if (p.session) a->cwd = p.cwd();
@@ -360,8 +449,44 @@ void App::setup_actions() {
     });
     add("activity.restart", "Restart shell in activity", "", [this] { if (Pane* p = focused_pane()) { p->stop_session(); ensure_session(*p); } });
     add("activity.collapse", "Collapse / expand children", "", [this] { if (Activity* a = tree_.get(focused_)) { a->collapsed = !a->collapsed; canvas_->layout(); } });
+    add("activity.minimize", "Minimize / expand pane on canvas", "", [this] { if (Pane* p = focused_pane()) p->toggle_minimized(); });
+    add("activity.minimize_others", "Minimize all other panes on canvas", "", [this] {
+        for (auto& kv : panes_) if (kv.first != focused_) if (Activity* a = tree_.get(kv.first)) a->minimized = true;
+        canvas_->layout(); save_state();
+    });
+    add("activity.expand_all", "Expand all minimized panes", "", [this] {
+        for (auto& kv : panes_) if (Activity* a = tree_.get(kv.first)) a->minimized = false;
+        canvas_->layout(); save_state();
+    });
+    add("activity.next_attention", "Jump to next terminal needing input / attention", "Ctrl+Shift+U", [this] {
+        double t = now();
+        uint64_t best_id = 0;
+        float best_score = -1e9f;
+        bool found_waiting = false;
+        for (auto& kv : panes_) {
+            if (kv.first == focused_) continue;
+            Pane& p = *kv.second;
+            bool w = p.waiting_for_user() || p.unread;
+            float sc = p.attention_score(t, focused_);
+            if (w && (!found_waiting || sc > best_score)) {
+                found_waiting = true;
+                best_score = sc;
+                best_id = kv.first;
+            } else if (!found_waiting && sc > best_score) {
+                best_score = sc;
+                best_id = kv.first;
+            }
+        }
+        if (best_id) {
+            if (Pane* bp = pane(best_id); bp && bp->minimized()) bp->set_minimized(false);
+            focus(best_id, true);
+        } else {
+            toast("No other terminals");
+        }
+    });
     add("view.overview", "Toggle overview", "Ctrl+Shift+O", [this] { canvas_->toggle_overview(); });
     add("view.sidebar", "Toggle sidebar", "Ctrl+Shift+B", [this] { sidebar_->visible = !sidebar_->visible; request_redraw(); });
+    add("view.sidebar_compact", "Toggle compact tree in sidebar", "", [this] { sidebar_->compact = !sidebar_->compact; request_redraw(); });
     add("view.zoom_in", "Zoom in", "Ctrl+=", [this] { canvas_->zoom_at(canvas_->viewport.x + canvas_->viewport.w / 2, canvas_->viewport.y + canvas_->viewport.h / 2, 1.2f); });
     add("view.zoom_out", "Zoom out", "Ctrl+-", [this] { canvas_->zoom_at(canvas_->viewport.x + canvas_->viewport.w / 2, canvas_->viewport.y + canvas_->viewport.h / 2, 1 / 1.2f); });
     add("view.zoom_reset", "Zoom to 100%", "Ctrl+0", [this] { canvas_->reset_zoom(); });
@@ -433,6 +558,7 @@ bool App::handle_global_key(const KeyEvent& ev) {
         case 'm': run_action("view.rail"); return true;
         case 'h': case '/': case '?': run_action("view.help"); return true;
         case 'j': run_action("block.json"); return true;
+        case 'u': run_action("activity.next_attention"); return true;
         case '=': case '+': run_action("view.font_bigger"); return true;
         case '-': case '_': run_action("view.font_smaller"); return true;
         default: break;
@@ -509,7 +635,10 @@ void App::handle_event(const gfx::Event& ev) {
         canvas_->wheel(ev.x, ev.y, ev.wheel_x, ev.wheel_y, ev.mods);
         break;
     case T::DropFile:
-        if (Pane* p = focused_pane()) p->write(shell_quote(ev.path) + " ");
+        if (Pane* p = focused_pane()) {
+            ensure_session(*p);
+            p->paste(shell_quote(ev.path) + " ");
+        }
         break;
     default: break;
     }

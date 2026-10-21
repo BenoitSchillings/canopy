@@ -159,6 +159,7 @@ static Json activity_to_json(const Activity& a) {
     j["created"] = Json((int64_t)a.created);
     j["last_active"] = Json((int64_t)a.last_active);
     j["collapsed"] = Json(a.collapsed);
+    if (a.minimized) j["minimized"] = Json(true);
     j["x"] = Json((double)a.x);
     j["y"] = Json((double)a.y);
     j["auto_place"] = Json(a.auto_place);
@@ -168,6 +169,7 @@ static Json activity_to_json(const Activity& a) {
     blocks.reserve(a.blocks.size());
     for (const auto& b : a.blocks) blocks.push_back(block_to_json(b));
     j["blocks"] = Json(std::move(blocks));
+    if (!a.history.empty()) j["history"] = strings_to_json(a.history);
     j["next_block_id"] = Json((uint64_t)a.next_block_id);
     j["color"] = Json(a.color);
     return j;
@@ -189,12 +191,14 @@ static std::unique_ptr<Activity> activity_from_json(const Json& j) {
     a->created = j["created"].as_int(0);
     a->last_active = j["last_active"].as_int(0);
     a->collapsed = j["collapsed"].as_bool(false);
+    a->minimized = j["minimized"].as_bool(false);
     a->x = (float)j["x"].as_double(0);
     a->y = (float)j["y"].as_double(0);
     a->auto_place = j["auto_place"].as_bool(true);
     a->cols = (int)j["cols"].as_int(0);
     a->rows = (int)j["rows"].as_int(0);
     for (const auto& b : j["blocks"].as_array()) a->blocks.push_back(block_from_json(b));
+    if (j.has("history")) a->history = strings_from_json(j["history"]);
     a->next_block_id = (uint64_t)j["next_block_id"].as_int(1);
     a->color = j["color"].as_string();
     return a;
@@ -264,6 +268,50 @@ void ActivityTree::remove(uint64_t id) {
         return std::find(doomed.begin(), doomed.end(), n->id) != doomed.end();
     }), nodes_.end());
     notify();
+}
+
+uint64_t ActivityTree::remove_one(uint64_t id) {
+    if (nodes_.size() <= 1) return 0;
+    Activity* a = get(id);
+    if (!a) return 0;
+    uint64_t next_focus = 0;
+    if (id == root_) {
+        if (a->children.empty()) return 0;
+        uint64_t nr_id = a->children[0];
+        Activity* nr = get(nr_id);
+        if (!nr) return 0;
+        nr->parent = 0;
+        for (size_t i = 1; i < a->children.size(); i++) {
+            uint64_t cid = a->children[i];
+            if (Activity* ch = get(cid)) ch->parent = nr_id;
+            nr->children.push_back(cid);
+        }
+        root_ = nr_id;
+        next_focus = nr_id;
+    } else {
+        uint64_t pid = a->parent;
+        Activity* p = get(pid);
+        if (!p) p = get(root_);
+        uint64_t sib = next_sibling(id);
+        if (!sib) sib = prev_sibling(id);
+        next_focus = !a->children.empty() ? a->children[0] : (sib ? sib : (p ? p->id : root_));
+        if (p) {
+            auto& ch = p->children;
+            auto it = std::find(ch.begin(), ch.end(), id);
+            size_t idx = (it != ch.end()) ? (size_t)(it - ch.begin()) : ch.size();
+            if (it != ch.end()) ch.erase(it);
+            for (size_t i = 0; i < a->children.size(); i++) {
+                uint64_t cid = a->children[i];
+                if (Activity* c = get(cid)) c->parent = p->id;
+                ch.insert(ch.begin() + (long)(idx + i), cid);
+            }
+        }
+    }
+    nodes_.erase(std::remove_if(nodes_.begin(), nodes_.end(), [&](const std::unique_ptr<Activity>& n) {
+        return n->id == id;
+    }), nodes_.end());
+    notify();
+    return next_focus;
 }
 
 void ActivityTree::move(uint64_t id, uint64_t new_parent, int index) {
@@ -461,6 +509,80 @@ std::string ActivityTree::default_path() {
     const char* xdg = std::getenv("XDG_DATA_HOME");
     std::string base = (xdg && *xdg) ? std::string(xdg) : home_dir() + "/.local/share";
     return base + "/canopy/tree.json";
+}
+
+std::string ActivityTree::history_dir() {
+    const char* xdg = std::getenv("XDG_DATA_HOME");
+    std::string base = (xdg && *xdg) ? std::string(xdg) : home_dir() + "/.local/share";
+    return base + "/canopy/history";
+}
+
+std::string ActivityTree::history_path(uint64_t id, const std::string& dir) {
+    std::string d = dir.empty() ? history_dir() : dir;
+    return d + "/activity-" + std::to_string(id) + ".history";
+}
+
+std::vector<std::string> ActivityTree::load_history(uint64_t id, const std::string& dir) {
+    std::vector<std::string> out;
+    std::string path = history_path(id, dir);
+    std::ifstream f(path);
+    if (!f) return out;
+    std::string line;
+    while (std::getline(f, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (!line.empty()) out.push_back(std::move(line));
+    }
+    return out;
+}
+
+bool ActivityTree::save_history(uint64_t id, const std::vector<std::string>& commands, const std::string& dir) {
+    std::string path = history_path(id, dir);
+    if (!make_parent_dirs(path)) return false;
+    std::string tmp = path + ".tmp";
+    FILE* f = std::fopen(tmp.c_str(), "wb");
+    if (!f) return false;
+    constexpr size_t MAX_HIST = 20000;
+    size_t start = commands.size() > MAX_HIST ? commands.size() - MAX_HIST : 0;
+    bool ok = true;
+    for (size_t i = start; i < commands.size(); i++) {
+        if (commands[i].empty()) continue;
+        std::string line = commands[i];
+        for (char& c : line) if (c == '\n' || c == '\r') c = ' ';
+        line.push_back('\n');
+        if (std::fwrite(line.data(), 1, line.size(), f) != line.size()) { ok = false; break; }
+    }
+    if (std::fclose(f) != 0) ok = false;
+    if (!ok) { ::unlink(tmp.c_str()); return false; }
+    if (::rename(tmp.c_str(), path.c_str()) != 0) { ::unlink(tmp.c_str()); return false; }
+    return true;
+}
+
+bool ActivityTree::append_history(uint64_t id, const std::string& command, const std::string& dir) {
+    if (command.empty() || command.find_first_not_of(" \t\r\n") == std::string::npos) return true;
+    std::string clean = command;
+    for (char& c : clean) if (c == '\n' || c == '\r') c = ' ';
+    auto existing = load_history(id, dir);
+    if (!existing.empty() && existing.back() == clean) return true;
+    std::string path = history_path(id, dir);
+    if (!make_parent_dirs(path)) return false;
+    FILE* f = std::fopen(path.c_str(), "ab");
+    if (!f) return false;
+    clean.push_back('\n');
+    bool ok = std::fwrite(clean.data(), 1, clean.size(), f) == clean.size();
+    if (std::fclose(f) != 0) ok = false;
+    return ok;
+}
+
+bool ActivityTree::copy_history(uint64_t from_id, uint64_t to_id, const std::string& dir) {
+    if (from_id == 0 || to_id == 0 || from_id == to_id) return false;
+    auto cmds = load_history(from_id, dir);
+    if (cmds.empty()) return false;
+    return save_history(to_id, cmds, dir);
+}
+
+void ActivityTree::remove_history(uint64_t id, const std::string& dir) {
+    std::string path = history_path(id, dir);
+    ::unlink(path.c_str());
 }
 
 bool ActivityTree::save(const std::string& path_in) const {

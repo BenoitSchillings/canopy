@@ -36,7 +36,10 @@ struct TerminalModes {
     bool reverse_video = false;     // DECSCNM
     bool cursor_visible = true;     // DECTCEM
     bool alt_sends_esc = true;      // 1039 (meta sends escape)
-    bool kitty_keyboard = false;    // reserved for future
+    bool synchronized_output = false; // 2026 (synchronized output)
+    bool kitty_keyboard = false;    // Kitty keyboard protocol active (kitty_flags != 0)
+    uint32_t kitty_flags = 0;       // Kitty keyboard protocol flags (CSI > flags u)
+    uint8_t modify_other_keys = 0;  // xterm modifyOtherKeys level (0..2) via CSI > 4 ; level m
     MouseMode mouse = MouseMode::None;
     MouseEncoding mouse_enc = MouseEncoding::Default;
 };
@@ -67,6 +70,7 @@ public:
     std::function<void(const std::string&)> on_title;         // OSC 0/2
     std::function<void(const std::string&)> on_cwd;           // OSC 7 (already URL-decoded path; hostname stripped)
     std::function<void()> on_bell;
+    std::function<void(const std::string& title, const std::string& body)> on_notify; // OSC 9 / 777 / 99 notification
     std::function<void(const OscEvent&)> on_osc;              // every OSC not fully consumed internally, plus 133/7770 always
     std::function<void(const std::string& selection, const std::string& base64)> on_clipboard_set; // OSC 52 write
     std::function<void(bool alt)> on_alt_screen;              // alt screen entered/left
@@ -118,6 +122,8 @@ public:
     void set_scrollback_max(int lines);
     // Focus in/out reporting (sends CSI I / CSI O when mode 1004 is set).
     void notify_focus(bool focused);
+    // Force-end synchronized output mode (e.g. on safety timeout).
+    void end_synchronized_output();
     // Title stack etc. are internal.
 
     // ---- environment supplied by the UI (optional; sensible defaults) ----

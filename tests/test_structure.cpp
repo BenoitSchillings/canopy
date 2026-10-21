@@ -152,6 +152,13 @@ static void test_paths_nofs() {
     s = scan_line("  --> src/main.rs:7:9", "", false);
     p = find(s, SpanKind::Path, "src/main.rs");
     CHECK(p && p->line_no == 7);
+    s = scan_line("modified src/core/keys.cpp:88-91 and src/ui/pane.cpp#L412-L420 and src/ui/app.cpp#L55", "", false);
+    p = find(s, SpanKind::Path, "src/core/keys.cpp");
+    CHECK(p && p->line_no == 88 && p->col_end - p->col_begin == (int)std::string("src/core/keys.cpp:88-91").size());
+    p = find(s, SpanKind::Path, "src/ui/pane.cpp");
+    CHECK(p && p->line_no == 412 && p->col_end - p->col_begin == (int)std::string("src/ui/pane.cpp#L412-L420").size());
+    p = find(s, SpanKind::Path, "src/ui/app.cpp");
+    CHECK(p && p->line_no == 55);
     s = scan_line("cat ~/.bashrc /etc/passwd ./run.sh ../lib/x.so", "", false);
     EXPECT_SPAN(s, SpanKind::Path, "~/.bashrc");
     EXPECT_SPAN(s, SpanKind::Path, "/etc/passwd");

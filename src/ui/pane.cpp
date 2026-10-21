@@ -23,8 +23,27 @@ Pane::~Pane() { stop_session(); }
 // ---------------------------------------------------------------- geometry
 float Pane::cell_w() const { return app_.cell_w(); }
 float Pane::cell_h() const { return app_.cell_h(); }
-Rect Pane::rect() const { return {x, y, GUTTER_W + cols * cell_w() + 2 * PAD, TITLE_H + rows * cell_h() + 2 * PAD}; }
+bool Pane::minimized() const {
+    const Activity* a = app_.tree().get(activity_id);
+    return a && a->minimized;
+}
+void Pane::set_minimized(bool m) {
+    if (Activity* a = app_.tree().get(activity_id)) {
+        if (a->minimized == m) return;
+        a->minimized = m;
+        app_.canvas().layout();
+        app_.save_state();
+        app_.request_redraw();
+    }
+}
+Rect Pane::rect() const {
+    float w = GUTTER_W + cols * cell_w() + 2 * PAD;
+    float h = minimized() ? (TITLE_H + cell_h() + 2 * PAD) : (TITLE_H + rows * cell_h() + 2 * PAD);
+    return {x, y, w, h};
+}
 Rect Pane::title_rect() const { return {x, y, rect().w, TITLE_H}; }
+Rect Pane::min_rect() const { Rect t = title_rect(); return {t.x + t.w - 52.f, t.y + (TITLE_H - 20.f) / 2.f, 20.f, 20.f}; }
+Rect Pane::close_rect() const { Rect t = title_rect(); return {t.x + t.w - 28.f, t.y + (TITLE_H - 20.f) / 2.f, 20.f, 20.f}; }
 Rect Pane::term_rect() const { return {x + GUTTER_W + PAD, y + TITLE_H + PAD, cols * cell_w(), rows * cell_h()}; }
 Rect Pane::gutter_rect() const { return {x + 2, y + TITLE_H + PAD, GUTTER_W + PAD - 2, rows * cell_h()}; }
 Rect Pane::resize_handle() const { Rect r = rect(); return {r.x + r.w - HANDLE, r.y + r.h - HANDLE, HANDLE, HANDLE}; }
@@ -41,6 +60,9 @@ bool Pane::cell_at(float wx, float wy, int* row, int* col) const {
 
 // ---------------------------------------------------------------- session
 bool Pane::start_session(std::string* err) {
+    if (session && !session->blocks().blocks().empty()) {
+        load_restored(export_blocks(60, 200));
+    }
     stop_session();
     const Activity* a = app_.tree().get(activity_id);
     Session::Options o;
@@ -53,6 +75,24 @@ bool Pane::start_session(std::string* err) {
     if (!o.cwd.empty()) { struct stat st; if (stat(o.cwd.c_str(), &st) != 0) o.cwd.clear(); }
     if (!app_.config().shell.empty()) o.argv = {app_.config().shell};
     if (app_.config().login_shell && o.argv.empty()) o.env_extra.push_back("CANOPY_LOGIN=1");
+    {
+        std::string hist = ActivityTree::history_path(activity_id);
+        struct stat st;
+        if (stat(hist.c_str(), &st) != 0 || st.st_size == 0) {
+            std::vector<std::string> seed;
+            if (a && !a->history.empty()) {
+                seed = a->history;
+            } else {
+                for (const Block& b : restored_blocks_) if (!b.command.empty()) seed.push_back(b.command);
+                if (seed.empty() && a) {
+                    for (const Block& b : a->blocks) if (!b.command.empty()) seed.push_back(b.command);
+                }
+            }
+            ActivityTree::save_history(activity_id, seed);
+        }
+        o.env_extra.push_back("CANOPY_HISTFILE=" + hist);
+        o.env_extra.push_back("HISTFILE=" + hist);
+    }
     session = std::make_unique<Session>();
     session->on_wake = [this] { app_.wake(); };
     std::string e;
@@ -71,18 +111,50 @@ bool Pane::start_session(std::string* err) {
         if (Activity* a = app_.tree().get(activity_id)) a->cwd = s;
     };
     t.on_title = [this](const std::string& s) { last_title = s; app_.request_redraw(); };
-    t.on_bell = [this] { app_.bell(activity_id); };
+    t.on_bell = [this] {
+        if (app_.focused_id() != activity_id || !app_.window().focused()) {
+            bell_unread_ = true;
+            unread = true;
+        }
+        app_.bell(activity_id);
+        app_.request_redraw();
+    };
+    t.on_notify = [this](const std::string& title, const std::string& body) {
+        std::string msg = title.empty() ? body : (body.empty() ? title : title + ": " + body);
+        notify_msg_ = msg;
+        if (app_.focused_id() != activity_id || !app_.window().focused()) {
+            bell_unread_ = true;
+            unread = true;
+        }
+        const Activity* a = app_.tree().get(activity_id);
+        app_.toast("🔔 " + (a ? a->name + ": " : std::string()) + ellipsize(msg, 60), 6.f);
+        if (!app_.window().focused()) app_.window().request_attention();
+        app_.request_redraw();
+    };
     t.on_clipboard_set = [this](const std::string& sel, const std::string& b64) {
         std::string data = base64_decode(b64);
         if (sel.find('p') != std::string::npos || sel.find('s') != std::string::npos) app_.set_primary(data);
         else app_.set_clipboard(data);
     };
-    session->blocks().on_block_finished = [this](const Block& b) { last_finish = app_.now(); app_.on_block_finished(activity_id, b); };
+    session->blocks().on_block_started = [this](const Block& b) {
+        if (!b.command.empty()) ActivityTree::append_history(activity_id, b.command);
+        output_since_input_ = false;
+        agent_notified_ = false;
+        agent_state_ = AgentState::None;
+    };
+    session->blocks().on_block_finished = [this](const Block& b) {
+        if (!b.command.empty()) ActivityTree::append_history(activity_id, b.command);
+        last_finish = app_.now();
+        agent_state_ = AgentState::None;
+        agent_notified_ = false;
+        app_.on_block_finished(activity_id, b);
+    };
     session->blocks().on_request = [this](const std::string& k, const std::string& p) { app_.on_shell_request(activity_id, k, p); };
     exited_at_ = 0;
     vis_dirty_ = true;
     last_gen_ = 0;
     last_history_base_ = 0;
+    anchor_abs_ = INT64_MIN;
     follow_ = true;
     return true;
 }
@@ -90,6 +162,7 @@ bool Pane::start_session(std::string* err) {
 void Pane::stop_session() {
     if (session) { session->stop(); session.reset(); }
     views_.clear();
+    agent_state_ = AgentState::None;
     vis_dirty_ = true;
 }
 
@@ -112,8 +185,24 @@ std::string Pane::cwd() const {
     return home_dir();
 }
 
+void Pane::clear_attention() {
+    unread = false;
+    bell_unread_ = false;
+    notify_msg_.clear();
+}
+
 void Pane::write(std::string_view bytes) {
-    if (live()) session->write(bytes);
+    if (live()) {
+        last_input_ = app_.now();
+        output_since_input_ = false;
+        agent_notified_ = false;
+        bell_unread_ = false;
+        notify_msg_.clear();
+        if (agent_state_ == AgentState::WaitingInput || agent_state_ == AgentState::NeedsApproval) {
+            agent_state_ = AgentState::Streaming;
+        }
+        session->write(bytes);
+    }
 }
 
 void Pane::resize_cells(int c, int r) {
@@ -126,20 +215,139 @@ void Pane::resize_cells(int c, int r) {
     clamp_scroll();
 }
 
+bool Pane::is_agent_session() const {
+    if (!session || !session->alive()) return false;
+    auto match_name = [](const std::string& s) {
+        if (s.empty()) return false;
+        if (s.find("✳") != std::string::npos) return true;
+        std::string l = to_lower(s);
+        static const char* kAgents[] = {"claude", "agy", "antigravity", "codex", "gemini", "aider", "opencode", "goose", "cursor-agent"};
+        for (const char* a : kAgents) {
+            size_t pos = 0;
+            size_t alen = std::strlen(a);
+            while ((pos = l.find(a, pos)) != std::string::npos) {
+                bool left_ok = (pos == 0) || (!std::isalnum((unsigned char)l[pos - 1]) && l[pos - 1] != '_');
+                bool right_ok = (pos + alen >= l.size()) || (!std::isalnum((unsigned char)l[pos + alen]) && l[pos + alen] != '_');
+                if (left_ok && right_ok) return true;
+                pos += alen;
+            }
+        }
+        return false;
+    };
+    const auto& bl = session->blocks().blocks();
+    if (!bl.empty() && bl.back().state == BlockState::Running && match_name(bl.back().command)) return true;
+    if (match_name(last_title)) return true;
+    if (match_name(session->pty().foreground_name())) return true;
+    return false;
+}
+
+void Pane::update_agent_state(double now) {
+    if (!session || !session->alive()) { agent_state_ = AgentState::None; return; }
+    const Terminal& t = session->term();
+    const auto& bl = session->blocks().blocks();
+    bool cmd_running = (!bl.empty() && bl.back().state == BlockState::Running) || t.modes().alt_screen;
+    if (!cmd_running) {
+        agent_state_ = AgentState::None;
+        return;
+    }
+    bool agent = is_agent_session();
+    double quiet = now - last_output;
+    if (quiet < 1.2) {
+        agent_state_ = agent ? AgentState::Streaming : AgentState::None;
+        return;
+    }
+    // Output has been quiet for >= 1.2s while a command/TUI is running.
+    // Scan the last few non-empty screen lines for permission/approval prompts or interactive questions.
+    bool approval = false;
+    bool interactive_prompt = false;
+    int scanned = 0;
+    for (int y = t.rows() - 1; y >= 0 && scanned < 10; --y) {
+        std::string txt = t.row(y).text();
+        size_t first = txt.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) continue;
+        size_t last = txt.find_last_not_of(" \t\r\n");
+        txt = txt.substr(first, last - first + 1);
+        std::string lt = to_lower(txt);
+        if (lt.find("do you want to") != std::string::npos ||
+            lt.find("would you like to") != std::string::npos ||
+            lt.find("allow ") != std::string::npos ||
+            lt.find("yes, allow") != std::string::npos ||
+            lt.find("approve") != std::string::npos ||
+            lt.find("proceed?") != std::string::npos ||
+            lt.find("[y/n]") != std::string::npos ||
+            lt.find("(y/n)") != std::string::npos ||
+            lt.find("[y/n/a]") != std::string::npos ||
+            (agent && (lt.find("❯ 1. yes") != std::string::npos || lt.find("> 1. yes") != std::string::npos))) {
+            approval = true;
+            break;
+        }
+        if (scanned == 0) {
+            if (lt.find("password:") != std::string::npos ||
+                lt.find("passphrase") != std::string::npos ||
+                lt.find("continue?") != std::string::npos ||
+                (!lt.empty() && lt.back() == '?' && lt.size() > 6)) {
+                interactive_prompt = true;
+            }
+        }
+        ++scanned;
+    }
+    if (approval) {
+        agent_state_ = AgentState::NeedsApproval;
+    } else if (agent && (output_since_input_ || last_input_ == 0)) {
+        agent_state_ = AgentState::WaitingInput;
+    } else if (interactive_prompt && output_since_input_) {
+        agent_state_ = AgentState::WaitingInput;
+    } else {
+        agent_state_ = AgentState::None;
+    }
+
+    if ((agent_state_ == AgentState::NeedsApproval || agent_state_ == AgentState::WaitingInput) && !agent_notified_) {
+        agent_notified_ = true;
+        bool unfocused = (app_.focused_id() != activity_id) || !app_.window().focused();
+        if (unfocused) {
+            unread = true;
+            const Activity* a = app_.tree().get(activity_id);
+            std::string name = a ? a->name : "Terminal";
+            std::string msg = (agent_state_ == AgentState::NeedsApproval)
+                ? ("⚡ " + name + " needs approval")
+                : ("⏸ " + name + " is waiting for input");
+            app_.toast(msg, 6.f);
+            if (!app_.window().focused()) app_.window().request_attention();
+            app_.request_summary(activity_id, false);
+        }
+    }
+}
+
 // ---------------------------------------------------------------- update
 bool Pane::update(double now) {
     if (!session) return false;
     bool changed = session->pump();
     Terminal& t = session->term();
+    if (t.modes().synchronized_output) {
+        if (sync_start_ == 0) sync_start_ = now;
+        else if (now - sync_start_ > 0.1) {
+            t.end_synchronized_output();
+            sync_start_ = 0;
+            vis_dirty_ = true;
+            changed = true;
+        }
+    } else {
+        sync_start_ = 0;
+    }
     uint64_t gen = t.generation();
     if (gen != last_gen_) {
         last_gen_ = gen;
         last_output = now;
+        output_since_input_ = true;
+        agent_notified_ = false;
         if (app_.focused_id() != activity_id) unread = true;
         vis_dirty_ = true;
         changed = true;
         if (!matches_.empty()) set_search(search_);
     }
+    AgentState prev_agent = agent_state_;
+    update_agent_state(now);
+    if (agent_state_ != prev_agent) changed = true;
     if (t.history_base() != last_history_base_) {
         last_history_base_ = t.history_base();
         session->blocks().on_history_base(last_history_base_);
@@ -175,7 +383,7 @@ const std::vector<VisRow>& Pane::vis() {
 void Pane::rebuild_vis() {
     vis_.clear();
     for (size_t i = 0; i < restored_.size(); i++) {
-        VisRow r; r.kind = VisRow::Restored; r.vidx = (int)i; r.block = restored_block_of_[i]; vis_.push_back(r);
+        VisRow r; r.kind = VisRow::Restored; r.abs = -(int64_t)restored_.size() + (int64_t)i; r.vidx = (int)i; r.block = restored_block_of_[i]; vis_.push_back(r);
     }
     if (session) {
         const Terminal& t = session->term();
@@ -233,6 +441,10 @@ void Pane::rebuild_vis() {
         vis_gen_ = t.generation();
     }
     vis_dirty_ = false;
+    if (!follow_ && anchor_abs_ != INT64_MIN) {
+        int r = row_of_abs(anchor_abs_);
+        if (r >= 0) top_ = r;
+    }
     clamp_scroll();
 }
 
@@ -258,15 +470,14 @@ const Line* Pane::line_for(const VisRow& vr) const {
 }
 
 int Pane::row_of_abs(int64_t abs) const {
-    // binary search over Term rows (abs is non-decreasing except sorted tables; fall back to linear)
+    // binary search over Restored+Term rows (abs is non-decreasing except sorted tables; fall back to linear)
     size_t lo = 0, hi = vis_.size();
     while (lo < hi) {
         size_t mid = (lo + hi) / 2;
-        int64_t v = vis_[mid].kind == VisRow::Restored ? -1 : vis_[mid].abs;
-        if (v < abs) lo = mid + 1; else hi = mid;
+        if (vis_[mid].abs < abs) lo = mid + 1; else hi = mid;
     }
-    if (lo < vis_.size() && vis_[lo].kind == VisRow::Term && vis_[lo].abs == abs) return (int)lo;
-    for (size_t i = 0; i < vis_.size(); i++) if (vis_[i].kind == VisRow::Term && vis_[i].abs == abs) return (int)i;
+    if (lo < vis_.size() && (vis_[lo].kind == VisRow::Term || vis_[lo].kind == VisRow::Restored) && vis_[lo].abs == abs) return (int)lo;
+    for (size_t i = 0; i < vis_.size(); i++) if ((vis_[i].kind == VisRow::Term || vis_[i].kind == VisRow::Restored) && vis_[i].abs == abs) return (int)i;
     return -1;
 }
 
@@ -275,22 +486,42 @@ void Pane::clamp_scroll() {
     if (follow_) top_ = maxtop;
     if (top_ > maxtop) top_ = maxtop;
     if (top_ < 0) top_ = 0;
-    if (top_ == maxtop) follow_ = true;
+    if (top_ == maxtop) {
+        follow_ = true;
+        anchor_abs_ = INT64_MIN;
+    } else if (top_ >= 0 && top_ < (int64_t)vis_.size()) {
+        anchor_abs_ = vis_[top_].abs;
+    }
+}
+
+int64_t Pane::lines_below() const {
+    if (follow_ || (session && session->term().modes().alt_screen)) return 0;
+    int64_t maxtop = std::max<int64_t>(0, (int64_t)vis_.size() - rows);
+    return std::max<int64_t>(0, maxtop - top_);
+}
+
+Rect Pane::scroll_pill_rect() const {
+    Rect T = term_rect();
+    float w = std::min(T.w - 24.f, 290.f);
+    float h = 24.f;
+    return {T.x + (T.w - w) / 2.f, T.y + T.h - h - 8.f, w, h};
 }
 
 void Pane::scroll_lines(int delta) {
     vis();
     if (session && session->term().modes().alt_screen) return;
+    anchor_abs_ = INT64_MIN;
     top_ += delta;
     follow_ = false;
     clamp_scroll();
 }
 void Pane::scroll_pages(int delta) { scroll_lines(delta * std::max(1, rows - 2)); }
-void Pane::scroll_to_bottom() { follow_ = true; clamp_scroll(); }
+void Pane::scroll_to_bottom() { follow_ = true; anchor_abs_ = INT64_MIN; clamp_scroll(); }
 void Pane::scroll_to_abs(int64_t abs) {
     vis();
     int r = row_of_abs(abs);
     if (r < 0) return;
+    anchor_abs_ = INT64_MIN;
     top_ = std::max<int64_t>(0, r - rows / 3);
     follow_ = false;
     clamp_scroll();
@@ -576,11 +807,26 @@ void Pane::extend_selection(int64_t abs, int col) {
 }
 
 std::string Pane::selected_text() const {
-    if (sel_.empty() || !session) return "";
+    if (sel_.empty()) return "";
     int64_t l0, l1; int c0, c1;
     sel_.ordered(l0, c0, l1, c1);
     if (sel_.mode == 2) { c0 = 0; c1 = cols - 1; }
-    return session->term().text(l0, c0, l1, c1 + 1);
+    if (l0 >= 0) return session ? session->term().text(l0, c0, l1, c1 + 1) : "";
+    std::string out;
+    int64_t rcount = (int64_t)restored_.size();
+    int64_t rend = std::min<int64_t>(-1, l1);
+    for (int64_t a = std::max<int64_t>(-rcount, l0); a <= rend; a++) {
+        const Line& ln = restored_[(size_t)(a + rcount)];
+        int b = (a == l0) ? c0 : 0;
+        int e = (a == l1) ? (c1 + 1) : ln.width();
+        out += ln.text(b, e);
+        if (a < l1) out += '\n';
+    }
+    if (l1 >= 0 && session) {
+        int64_t tb = session->term().history_base();
+        out += session->term().text(tb, 0, l1, c1 + 1);
+    }
+    return out;
 }
 
 void Pane::clear_selection() { sel_ = {}; app_.request_redraw(); }
@@ -599,19 +845,26 @@ void Pane::select_all_block(int idx) {
 void Pane::set_search(const std::string& q) {
     search_ = q;
     matches_.clear(); match_idx_ = -1;
-    if (q.empty() || !session) return;
+    if (q.empty()) return;
     std::string nq = to_lower(q);
-    const Terminal& t = session->term();
-    int64_t end = t.modes().alt_screen ? 0 : t.screen_base() + t.rows();
-    for (int64_t a = t.history_base(); a < end && matches_.size() < 5000; a++) {
-        std::string txt = t.line_abs(a).text();
-        if (txt.empty()) continue;
+    auto scan = [&](int64_t a, const std::string& txt) {
+        if (txt.empty()) return;
         std::string lt = to_lower(txt);
         size_t pos = 0;
-        while ((pos = lt.find(nq, pos)) != std::string::npos) {
+        while ((pos = lt.find(nq, pos)) != std::string::npos && matches_.size() < 5000) {
             int col = (int)utf8_length(std::string_view(txt).substr(0, pos));
             matches_.push_back({a, col, (int)utf8_length(nq)});
             pos += nq.size();
+        }
+    };
+    for (size_t i = 0; i < restored_.size() && matches_.size() < 5000; i++) {
+        scan(-(int64_t)restored_.size() + (int64_t)i, restored_[i].text());
+    }
+    if (session) {
+        const Terminal& t = session->term();
+        int64_t end = t.modes().alt_screen ? 0 : t.screen_base() + t.rows();
+        for (int64_t a = t.history_base(); a < end && matches_.size() < 5000; a++) {
+            scan(a, t.line_abs(a).text());
         }
     }
     // pick the match nearest to the viewport
@@ -661,6 +914,7 @@ void Pane::mouse_down(float wx, float wy, MouseButton b, int clicks, uint32_t mo
     if (!in_cells) return;
 
     if (b == MouseButton::Left) {
+        if (hover.scroll_pill) { scroll_to_bottom(); app_.request_redraw(); return; }
         if (vr && vr->kind == VisRow::Summary) { set_fold(vr->block, false); return; }
         if (hover.chip && hover.block >= 0) {
             const Block* bk = block(hover.block);
@@ -684,11 +938,11 @@ void Pane::mouse_down(float wx, float wy, MouseButton b, int clicks, uint32_t mo
                 return;
             }
         }
-        if (!vr || vr->kind != VisRow::Term) { clear_selection(); return; }
+        if (!vr || (vr->kind != VisRow::Term && vr->kind != VisRow::Restored)) { clear_selection(); return; }
         sel_ = {};
         sel_.active = true; sel_.mode = clicks >= 3 ? 2 : clicks == 2 ? 1 : 0;
         sel_.al = sel_.hl = vr->abs; sel_.ac = sel_.hc = c;
-        if (sel_.mode == 1 && session) {
+        if (sel_.mode == 1 && vr->kind == VisRow::Term && session) {
             int wb, we; session->term().word_at(vr->abs, c, &wb, &we);
             sel_.ac = wb; sel_.hc = std::max(wb, we - 1);
         }
@@ -707,7 +961,26 @@ void Pane::mouse_down(float wx, float wy, MouseButton b, int clicks, uint32_t mo
         }
         std::vector<MenuItem> items;
         int bi = vr ? vr->block : -1;
-        if (bi >= 0 && block(bi)) {
+        if (vr && vr->kind == VisRow::Restored && bi >= 0 && bi < (int)restored_blocks_.size()) {
+            const Block& bk = restored_blocks_[bi];
+            std::string cmd = bk.command;
+            uint64_t aid = activity_id;
+            if (!cmd.empty()) {
+                items.push_back({"Re-run  " + ellipsize(cmd, 30), [this, cmd] {
+                    app_.ensure_session(*this);
+                    if (at_prompt()) { write(cmd + "\r"); scroll_to_bottom(); }
+                    else queue_input_at_prompt(cmd + "\r");
+                }});
+                items.push_back({"Run in child activity", [this, cmd, aid] { app_.run_in_child(aid, cmd, cwd()); }});
+                items.push_back({"Copy command", [this, cmd] { app_.set_clipboard(cmd); }});
+            }
+            if (!bk.saved_output.empty()) {
+                std::string out;
+                for (const auto& l : bk.saved_output) { out += l; out += '\n'; }
+                items.push_back({"Copy output", [this, out] { app_.set_clipboard(out); }});
+            }
+            if (!items.empty()) items.push_back({"-", nullptr});
+        } else if (bi >= 0 && block(bi)) {
             const Block* bk = block(bi);
             std::string cmd = bk->command;
             uint64_t aid = activity_id;
@@ -791,7 +1064,7 @@ void Pane::mouse_move(float wx, float wy, uint32_t mods, MouseButton held) {
         }
         vis();
         int64_t vi = top_ + row;
-        if (vi >= 0 && vi < (int64_t)vis_.size() && vis_[vi].kind == VisRow::Term) extend_selection(vis_[vi].abs, c);
+        if (vi >= 0 && vi < (int64_t)vis_.size() && (vis_[vi].kind == VisRow::Term || vis_[vi].kind == VisRow::Restored)) extend_selection(vis_[vi].abs, c);
         app_.request_redraw();
         return;
     }
@@ -869,8 +1142,15 @@ void Pane::set_hover(float wx, float wy) {
     Rect R = rect();
     if (!R.contains(wx, wy)) return;
     hover.valid = true;
-    if (resize_handle().contains(wx, wy)) { hover.handle = true; return; }
-    if (title_rect().contains(wx, wy)) { hover.title = true; return; }
+    if (!minimized() && resize_handle().contains(wx, wy)) { hover.handle = true; return; }
+    if (title_rect().contains(wx, wy)) {
+        hover.title = true;
+        hover.min_btn = min_rect().contains(wx, wy);
+        hover.close_btn = close_rect().contains(wx, wy);
+        return;
+    }
+    if (minimized()) return;
+    if (lines_below() > 0 && scroll_pill_rect().contains(wx, wy)) { hover.scroll_pill = true; return; }
     int row, c;
     if (!cell_at(wx, wy, &row, &c)) return;
     hover.row = row; hover.col = c;
@@ -913,7 +1193,9 @@ void Pane::set_hover(float wx, float wy) {
 
 int Pane::system_cursor() const {
     if (hover.handle) return SDL_SYSTEM_CURSOR_SIZENWSE;
+    if (hover.min_btn || hover.close_btn || hover.scroll_pill) return SDL_SYSTEM_CURSOR_HAND;
     if (hover.title) return SDL_SYSTEM_CURSOR_ARROW;
+    if (minimized() && hover.valid) return SDL_SYSTEM_CURSOR_HAND;
     if (hover.gutter || hover.summary || hover.chip || hover.header) return SDL_SYSTEM_CURSOR_HAND;
     if (hover.link || hover.span) return SDL_SYSTEM_CURSOR_HAND;
     if (hover.valid && hover.row >= 0) return SDL_SYSTEM_CURSOR_IBEAM;
@@ -923,6 +1205,9 @@ int Pane::system_cursor() const {
 std::string Pane::status_text() const {
     if (!session) return has_restored() ? "dormant" : "not started";
     if (!session->alive()) return "exited";
+    if (agent_state_ == AgentState::NeedsApproval) return "⚡ needs approval";
+    if (agent_state_ == AgentState::WaitingInput) return "⏸ waiting for input";
+    if (bell_unread_ && !notify_msg_.empty()) return "🔔 " + ellipsize(notify_msg_, 22);
     const auto& bl = session->blocks().blocks();
     for (size_t i = bl.size(); i-- > 0;) {
         const Block& b = bl[i];
@@ -955,6 +1240,15 @@ void Pane::draw(Renderer& r, Font& font, const DrawCtx& ctx) {
     }
 
     draw_title(r, font, ctx);
+    if (minimized() && !ctx.in_rail) {
+        std::string sum = summary.empty() ? local_summary() : summary;
+        r.push_clip({R.x + 12, R.y + TITLE_H, R.w - 24, R.h - TITLE_H});
+        r.draw_text(font, R.x + 14, R.y + TITLE_H + PAD + font.metrics().ascent, sum, alpha(col(th.foreground), summary_ai ? 0.9f : 0.7f), summary_ai ? gfx::STYLE_REGULAR : gfx::STYLE_ITALIC);
+        r.pop_clip();
+        RGBA border = ctx.focused ? col(th.accent) : alpha(col(th.chrome_fg), 0.3f);
+        r.rounded_rect_stroke(R, RADIUS, border, ctx.focused ? 1.5f : 1.f);
+        return;
+    }
     const auto& v = vis();
     Rect T = term_rect();
     Rect clip = {R.x + 1, T.y - 2, R.w - 2, T.h + 4};
@@ -999,11 +1293,12 @@ void Pane::draw(Renderer& r, Font& font, const DrawCtx& ctx) {
     draw_cursor(r, ctx);
     r.pop_clip();
     draw_scrollbar(r, ctx);
+    if (lines_below() > 0 && session && session->alive() && !ctx.in_rail && s >= 0.45f) draw_scroll_pill(r, font, ctx);
     if (!session || !session->alive()) draw_dormant(r, font, ctx);
     if (s < 0.6f && !ctx.in_rail) draw_summary_banner(r, font, ctx);
     // border
-    RGBA border = ctx.focused ? col(th.accent) : alpha(col(th.chrome_fg), 0.3f);
-    r.rounded_rect_stroke(R, RADIUS, border, ctx.focused ? 1.5f : 1.f);
+    RGBA border = ctx.focused ? col(th.accent) : (waiting_for_user() ? alpha(col(th.warning), 0.75f) : alpha(col(th.chrome_fg), 0.3f));
+    r.rounded_rect_stroke(R, RADIUS, border, (ctx.focused || waiting_for_user()) ? 1.5f : 1.f);
     // resize handle
     if (s > 0.5f) {
         Rect h = resize_handle();
@@ -1024,9 +1319,11 @@ void Pane::draw_title(Renderer& r, Font& font, const DrawCtx& ctx) {
     // status dot
     RGBA dot = alpha(fg, 0.4f);
     bool running = false;
+    bool waiting = waiting_for_user();
     if (session && session->alive()) {
         const auto& bl = session->blocks().blocks();
-        if (!bl.empty() && bl.back().state == BlockState::Running) { running = true; dot = col(th.accent); }
+        if (waiting) { dot = col(th.warning); }
+        else if (!bl.empty() && bl.back().state == BlockState::Running) { running = true; dot = col(th.accent); }
         else if (!bl.empty() && bl.back().state == BlockState::Done) dot = bl.back().exit_code == 0 ? col(th.ok) : col(th.error);
         else { for (size_t i = bl.size(); i-- > 0;) if (bl[i].state == BlockState::Done) { dot = bl[i].exit_code == 0 ? col(th.ok) : col(th.error); break; } }
     } else if (session) dot = col(th.error);
@@ -1038,28 +1335,61 @@ void Pane::draw_title(Renderer& r, Font& font, const DrawCtx& ctx) {
         r.draw_text(font, x0 + 16 * sc, t.y + TITLE_H / 2 + font.metrics().ascent * sc / 2.f, name, col(th.foreground), gfx::STYLE_BOLD, sc);
         return;
     }
-    r.circle(x0 + 5, t.y + TITLE_H / 2, running ? 5 : 4, dot);
-    if (running) r.circle(x0 + 5, t.y + TITLE_H / 2, 7 + 2 * (float)std::sin(ctx.now * 6), alpha(dot, 0.25f));
+    r.circle(x0 + 5, t.y + TITLE_H / 2, (running || waiting) ? 5 : 4, dot);
+    if (running || waiting) r.circle(x0 + 5, t.y + TITLE_H / 2, 7 + 2 * (float)std::sin(ctx.now * 6), alpha(dot, 0.25f));
     float x = x0 + 18;
     x += r.draw_text(font, x, base, name, ctx.focused ? col(th.foreground) : fg, gfx::STYLE_BOLD) + 10;
     std::string sub = pretty_path(cwd(), 40);
     if (!last_title.empty() && last_title != name && last_title.find(sub) == std::string::npos) sub += "  ·  " + ellipsize(last_title, 40);
-    float right = t.x + t.w - 12;
+    Rect cb = close_rect();
+    Rect mb = min_rect();
+    if (!ctx.in_rail) {
+        bool hot_min = hover.min_btn;
+        RGBA mbg = hot_min ? alpha(col(th.accent), 0.65f) : alpha(fg, ctx.focused ? 0.14f : 0.08f);
+        RGBA mfg = hot_min ? col(th.foreground) : alpha(fg, ctx.focused ? 0.85f : 0.55f);
+        r.rounded_rect(mb, 5.f, mbg);
+        std::string mstr = minimized() ? "+" : "−";
+        float mw = r.measure_text(font, mstr, gfx::STYLE_BOLD);
+        r.draw_text(font, mb.x + (mb.w - mw) / 2.f, base, mstr, mfg, gfx::STYLE_BOLD);
+
+        bool hot = hover.close_btn;
+        RGBA cbg = hot ? alpha(col(th.error), 0.85f) : alpha(fg, ctx.focused ? 0.14f : 0.08f);
+        RGBA cfg_ = hot ? col(th.foreground) : alpha(fg, ctx.focused ? 0.85f : 0.55f);
+        r.rounded_rect(cb, 5.f, cbg);
+        std::string xstr = "×";
+        float xw = r.measure_text(font, xstr, gfx::STYLE_BOLD);
+        r.draw_text(font, cb.x + (cb.w - xw) / 2.f, base, xstr, cfg_, gfx::STYLE_BOLD);
+    }
+    float right = ctx.in_rail ? (t.x + t.w - 12) : (mb.x - 8);
     float avail = right - x - 90;
     if (avail > 40) {
         r.push_clip({x, t.y, avail, TITLE_H});
         r.draw_text(font, x, base, sub, alpha(fg, 0.7f));
         r.pop_clip();
     }
-    // right side: running time or unread badge, child count
+    // right side: agent status, running time, or unread badge
     std::string rt;
-    if (running) {
+    RGBA rt_col = col(th.accent);
+    if (agent_state_ == AgentState::NeedsApproval) {
+        rt = "⚡ approve";
+        rt_col = col(th.warning);
+    } else if (agent_state_ == AgentState::WaitingInput) {
+        rt = "⏸ input";
+        rt_col = col(th.warning);
+    } else if (bell_unread_) {
+        rt = "🔔 notify";
+        rt_col = col(th.warning);
+    } else if (running) {
         const Block& b = session->blocks().blocks().back();
         rt = std::string(SPINNER[(int)(ctx.now * 8) % 4]) + " " + fmt_duration(ctx.now - b.start_time);
-    } else if (unread && !ctx.focused) rt = "● new";
+        rt_col = col(th.accent);
+    } else if (unread && !ctx.focused) {
+        rt = "● new";
+        rt_col = col(th.warning);
+    }
     if (!rt.empty()) {
-        float w = r.measure_text(font, rt);
-        r.draw_text(font, right - w, base, rt, unread && !running ? col(th.warning) : col(th.accent));
+        float w = r.measure_text(font, rt, waiting ? gfx::STYLE_BOLD : gfx::STYLE_REGULAR);
+        r.draw_text(font, right - w, base, rt, rt_col, waiting ? gfx::STYLE_BOLD : gfx::STYLE_REGULAR);
     }
     if (a && !a->notes.empty() && ctx.scale > 0.6f) {
         float w = r.measure_text(font, rt);
@@ -1078,14 +1408,15 @@ void Pane::draw_line(Renderer& r, Font& font, const Line& ln, float x0, float y0
     RGBA selc = col(th.selection);
     RGBA defbg = col(th.background);
     bool rv = session && session->term().modes().reverse_video;
+    bool selectable = (vr.kind == VisRow::Term || vr.kind == VisRow::Restored);
     // search matches on this row
     const Match* mstart = nullptr; size_t mcount = 0;
-    if (!matches_.empty() && vr.kind == VisRow::Term) {
+    if (!matches_.empty() && selectable) {
         auto it = std::lower_bound(matches_.begin(), matches_.end(), vr.abs, [](const Match& m, int64_t a) { return m.abs < a; });
         if (it != matches_.end() && it->abs == vr.abs) { mstart = &*it; while (it != matches_.end() && it->abs == vr.abs) { it++; mcount++; } }
     }
     int cur_match_col = -1, cur_match_len = 0;
-    if (match_idx_ >= 0 && match_idx_ < (int)matches_.size() && matches_[match_idx_].abs == vr.abs && vr.kind == VisRow::Term) { cur_match_col = matches_[match_idx_].col; cur_match_len = matches_[match_idx_].len; }
+    if (match_idx_ >= 0 && match_idx_ < (int)matches_.size() && matches_[match_idx_].abs == vr.abs && selectable) { cur_match_col = matches_[match_idx_].col; cur_match_len = matches_[match_idx_].len; }
     // table header / sorted column tint
     int tint_col_begin = -1, tint_col_end = -1; bool header = false;
     const Block* bk = block(vr.block);
@@ -1129,7 +1460,7 @@ void Pane::draw_line(Renderer& r, Font& font, const Line& ln, float x0, float y0
                 bgc = col(rgb); draw = true;
             }
         }
-        if (vr.kind == VisRow::Term && selected(vr.abs, c)) { bgc = selc; draw = true; }
+        if (selectable && selected(vr.abs, c)) { bgc = selc; draw = true; }
         if (mstart) for (size_t k = 0; k < mcount; k++) if (c >= mstart[k].col && c < mstart[k].col + mstart[k].len) { bgc = alpha(col(th.warning), 0.55f); draw = true; }
         if (cur_match_col >= 0 && c >= cur_match_col && c < cur_match_col + cur_match_len) { bgc = col(th.warning); draw = true; }
         if (c == 0) { run_start = 0; run_col = bgc; run_draw = draw; continue; }
@@ -1155,7 +1486,7 @@ void Pane::draw_line(Renderer& r, Font& font, const Line& ln, float x0, float y0
         }
         RGBA fg = col(rgb);
         if (cell.attrs & ATTR_DIM) fg.a *= 0.55f;
-        if (vr.kind == VisRow::Term && selected(vr.abs, c)) fg = col(th.foreground);
+        if (selectable && selected(vr.abs, c)) fg = col(th.foreground);
         float cx = x0 + c * cw;
         bool blank = cell.cp == 0 || cell.cp == U' ';
         if (lod) {
@@ -1375,13 +1706,33 @@ void Pane::draw_scrollbar(Renderer& r, const DrawCtx& ctx) {
     }
 }
 
+void Pane::draw_scroll_pill(Renderer& r, Font& font, const DrawCtx& ctx) {
+    int64_t below = lines_below();
+    if (below <= 0) return;
+    const Theme& th = app_.theme();
+    bool streaming = (ctx.now - last_output) < 1.5;
+    std::string label = streaming
+        ? ("↓ Streaming below (" + std::to_string((long long)below) + " lines) · click to follow")
+        : ("↓ " + std::to_string((long long)below) + " lines below · click to follow");
+    Rect box = scroll_pill_rect();
+    float tw = r.measure_text(font, label, gfx::STYLE_BOLD);
+    box.w = std::min(term_rect().w - 20.f, std::max(box.w, tw + 24.f));
+    box.x = term_rect().x + (term_rect().w - box.w) / 2.f;
+    RGBA border_c = streaming ? col(th.warning) : col(th.accent);
+    r.rounded_rect(box, 12.f, alpha(col(th.chrome_bg), hover.scroll_pill ? 0.98f : 0.92f));
+    r.rounded_rect_stroke(box, 12.f, alpha(border_c, hover.scroll_pill ? 0.95f : 0.7f), 1.2f);
+    float tx = box.x + (box.w - tw) / 2.f;
+    float ty = box.y + box.h / 2.f + font.metrics().ascent / 2.f - 1.f;
+    r.draw_text(font, tx, ty, label, streaming ? col(th.warning) : col(th.foreground), gfx::STYLE_BOLD);
+}
+
 void Pane::draw_dormant(Renderer& r, Font& font, const DrawCtx& ctx) {
     const Theme& th = app_.theme();
     Rect T = term_rect();
     if (ctx.scale * cell_h() < 4.f) return;
     std::string msg;
     if (!session) msg = err_.empty() ? (has_restored() ? "dormant · press Enter or click to resume the shell here" : "press Enter to start a shell") : "failed to start shell: " + err_;
-    else msg = "shell exited (" + std::to_string(session->exit_status()) + ") · press Enter to restart";
+    else msg = "shell exited (" + std::to_string(session->exit_status()) + ") · press Enter to restart · × or Ctrl+Shift+W to close";
     float w = r.measure_text(font, msg) + 24;
     float h = cell_h() + 12;
     Rect box = {T.x + (T.w - w) / 2, T.y + T.h - h - 12, w, h};
@@ -1484,6 +1835,11 @@ std::string Pane::local_summary() const {
     if (!session->alive()) return "Shell exited in " + dir;
     const Terminal& t = session->term();
     const auto& bl = session->blocks().blocks();
+    std::string cmd_name = (!bl.empty() && !bl.back().command.empty()) ? ellipsize(bl.back().command, 32) : session->pty().foreground_name();
+    if (cmd_name.empty()) cmd_name = "agent";
+    if (agent_state_ == AgentState::NeedsApproval) return "⚡ Needs approval in " + cmd_name + " (" + dir + ")";
+    if (agent_state_ == AgentState::WaitingInput) return "⏸ Waiting for input in " + cmd_name + " (" + dir + ")";
+    if (bell_unread_ && !notify_msg_.empty()) return "🔔 " + ellipsize(notify_msg_, 48) + " (" + dir + ")";
     if (t.modes().alt_screen) {
         std::string prog = session->pty().foreground_name();
         std::string s = "In " + (prog.empty() ? std::string("a full-screen program") : prog);
@@ -1502,6 +1858,9 @@ std::string Pane::local_summary() const {
 float Pane::attention_score(double now, uint64_t focused) const {
     float s = 0;
     if (activity_id == focused) s -= 1000;              // the current one: last in "find another" lists
+    if (agent_state_ == AgentState::NeedsApproval) s += 95;
+    else if (agent_state_ == AgentState::WaitingInput) s += 75;
+    if (bell_unread_) s += 65;
     if (unread) s += 50;
     if (session && session->alive()) {
         const auto& bl = session->blocks().blocks();
@@ -1518,13 +1877,16 @@ float Pane::attention_score(double now, uint64_t focused) const {
 std::vector<std::string> Pane::attention_badges(double now) const {
     std::vector<std::string> b;
     if (session && session->alive()) {
+        if (agent_state_ == AgentState::NeedsApproval) b.push_back("⚡ needs approval");
+        else if (agent_state_ == AgentState::WaitingInput) b.push_back("⏸ waiting for input");
+        if (bell_unread_) b.push_back(notify_msg_.empty() ? "🔔 bell" : "🔔 " + ellipsize(notify_msg_, 20));
         const auto& bl = session->blocks().blocks();
         if (!bl.empty() && bl.back().state == BlockState::Running) b.push_back("⟳ " + fmt_duration(now - bl.back().start_time));
         else if (session->term().modes().alt_screen) { std::string p = session->pty().foreground_name(); b.push_back(p.empty() ? "full-screen" : p); }
         for (size_t i = bl.size(); i-- > 0;) if (bl[i].state == BlockState::Done && !bl[i].command.empty()) { if (bl[i].exit_code != 0) b.push_back("✗ exit " + std::to_string(bl[i].exit_code)); break; }
     } else if (session) b.push_back("exited");
     else b.push_back("dormant");
-    if (unread) b.push_back("● new output");
+    if (unread && !waiting_for_user()) b.push_back("● new output");
     return b;
 }
 

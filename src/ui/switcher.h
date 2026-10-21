@@ -20,7 +20,7 @@ public:
     void draw(const DrawCtx& ctx);
 
 private:
-    struct Entry { uint64_t id; int score; Rect r; };
+    struct Entry { uint64_t id; int score; Rect r; Rect close_btn; };
     void rebuild();
     App& app_;
     bool open_ = false;
@@ -28,6 +28,7 @@ private:
     std::vector<Entry> entries_;
     int sel_ = 0;
     int cols_ = 3;
+    uint64_t hover_close_ = 0;
 };
 
 } // namespace canopy::ui

@@ -404,7 +404,7 @@ inline bool is_path_char(unsigned char c) {
     if (c < 0x21) return false;
     switch (c) {
     case '"': case '\'': case '`': case '<': case '>': case '(': case ')': case '[': case ']': case '{': case '}':
-    case ',': case ';': case '|': case '=': case ':': case '*': case '?': case '\\': case '&':
+    case ',': case ';': case '|': case '=': case ':': case '*': case '?': case '\\': case '&': case '#':
         return false;
     default:
         return true;
@@ -445,7 +445,7 @@ bool match_path(std::string_view line, size_t i, size_t wend, const std::string&
         if (path.find('@') != std::string_view::npos) return false;
     }
 
-    // Optional :LINE[:COL] suffix.
+    // Optional :LINE[:COL] or :LINE-ENDLINE or #L<LINE>[-L<ENDLINE>] suffix.
     size_t span_end = p;
     int line_no = 0;
     if (p + 1 < wend && line[p] == ':' && is_digit((unsigned char)line[p + 1])) {
@@ -456,10 +456,29 @@ bool match_path(std::string_view line, size_t i, size_t wend, const std::string&
         if (ok) {
             line_no = (int)v;
             span_end = q;
-            if (q + 1 < wend && line[q] == ':' && is_digit((unsigned char)line[q + 1])) {
+            if (q + 1 < wend && (line[q] == ':' || line[q] == '-') && is_digit((unsigned char)line[q + 1])) {
                 size_t r = q + 1;
                 while (r < wend && is_digit((unsigned char)line[r])) r++;
                 if (r >= wend || !is_alnum((unsigned char)line[r])) span_end = r;
+            }
+        }
+    } else if (p + 1 < wend && line[p] == '#') {
+        size_t q = p + 1;
+        if (q < wend && (line[q] == 'L' || line[q] == 'l')) q++;
+        if (q < wend && is_digit((unsigned char)line[q])) {
+            long v = 0;
+            size_t dstart = q;
+            while (q < wend && is_digit((unsigned char)line[q]) && q - dstart <= 8) v = v * 10 + (line[q++] - '0');
+            if (q >= wend || !is_alnum((unsigned char)line[q])) {
+                line_no = (int)v;
+                span_end = q;
+                if (q + 1 < wend && line[q] == '-') {
+                    size_t r = q + 1;
+                    if (r < wend && (line[r] == 'L' || line[r] == 'l')) r++;
+                    size_t rstart = r;
+                    while (r < wend && is_digit((unsigned char)line[r])) r++;
+                    if (r > rstart && (r >= wend || !is_alnum((unsigned char)line[r]))) span_end = r;
+                }
             }
         }
     } else if (p + 8 <= line.size() && line.compare(p, 8, "\", line ") == 0 && p + 8 < line.size() && is_digit((unsigned char)line[p + 8])) {
@@ -473,7 +492,11 @@ bool match_path(std::string_view line, size_t i, size_t wend, const std::string&
     std::string pstr(path);
     bool keep;
     if (check_fs) {
-        keep = path_exists(pstr, cwd) || line_no > 0 || ext;
+        bool exists = path_exists(pstr, cwd);
+        if (!exists && pstr.size() > 2 && (pstr.compare(0, 2, "a/") == 0 || pstr.compare(0, 2, "b/") == 0)) {
+            exists = path_exists(pstr.substr(2), cwd);
+        }
+        keep = exists || line_no > 0 || ext;
     } else {
         keep = tier_a || line_no > 0 || ext;
     }

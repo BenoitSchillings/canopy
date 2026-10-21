@@ -21,12 +21,13 @@ public:
     static std::vector<std::string> wrap_text(gfx::Renderer& r, gfx::Font& font, const std::string& text, float maxw, float scale, size_t max_lines);
 
 private:
-    struct Card { uint64_t id; Rect r; };
+    struct Card { uint64_t id; Rect r; Rect close_btn; };
     void build_cards();
     App& app_;
     std::vector<Card> cards_;
     float scroll_ = 0, content_h_ = 0;
     uint64_t hover_ = 0;
+    uint64_t hover_close_ = 0;
 };
 
 } // namespace canopy::ui

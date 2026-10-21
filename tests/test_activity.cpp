@@ -335,6 +335,69 @@ static void test_save_load() {
     if (dir.rfind("/tmp/canopy_act_", 0) == 0) (void)!system(cmd.c_str());
 }
 
+static void test_remove_one_and_history() {
+    ActivityTree t;
+    // Cannot remove the only remaining node.
+    CHECK(t.remove_one(1) == 0);
+    CHECK(t.count() == 1);
+
+    uint64_t a = t.create(0, "A", "/a");
+    uint64_t b = t.create(0, "B", "/b");
+    uint64_t a1 = t.create(a, "A1", "/a1");
+    uint64_t a2 = t.create(a, "A2", "/a2");
+    CHECK(t.count() == 5);
+
+    // Removing intermediate node A splices A1 and A2 into root's children in A's position.
+    uint64_t next = t.remove_one(a);
+    CHECK(next == a1);
+    CHECK(t.count() == 4);
+    CHECK(!t.get(a));
+    CHECK(t.get(a1) && t.get(a1)->parent == 1);
+    CHECK(t.get(a2) && t.get(a2)->parent == 1);
+    CHECK(t.get(1)->children.size() == 3);
+    CHECK(t.get(1)->children[0] == a1 && t.get(1)->children[1] == a2 && t.get(1)->children[2] == b);
+
+    // Removing the root node promotes its first child (a1) to root and reparents a2 and b under a1.
+    uint64_t new_root = t.remove_one(1);
+    CHECK(new_root == a1);
+    CHECK(t.root() == a1);
+    CHECK(!t.get(1));
+    CHECK(t.get(a1)->parent == 0);
+    CHECK(t.get(a2)->parent == a1 && t.get(b)->parent == a1);
+    CHECK(t.count() == 3);
+
+    // Per-terminal persistent history files.
+    std::string dir = tmpdir();
+    std::string hdir = dir + "/hist";
+    CHECK(ActivityTree::load_history(10, hdir).empty());
+    CHECK(ActivityTree::append_history(10, "git status", hdir));
+    CHECK(ActivityTree::append_history(10, "git status", hdir)); // consecutive duplicate ignored
+    CHECK(ActivityTree::append_history(10, "make -j", hdir));
+    auto h10 = ActivityTree::load_history(10, hdir);
+    CHECK(h10.size() == 2 && h10[0] == "git status" && h10[1] == "make -j");
+
+    // Copy history to child activity 11, then diverge.
+    CHECK(ActivityTree::copy_history(10, 11, hdir));
+    CHECK(ActivityTree::append_history(11, "./build/canopy", hdir));
+    auto h11 = ActivityTree::load_history(11, hdir);
+    CHECK(h11.size() == 3 && h11[2] == "./build/canopy");
+    CHECK(ActivityTree::load_history(10, hdir).size() == 2);
+
+    // Remove history when activity closes.
+    ActivityTree::remove_history(11, hdir);
+    CHECK(ActivityTree::load_history(11, hdir).empty());
+
+    // Activity::history JSON roundtrip.
+    t.get(a1)->history = {"ls -la", "pwd"};
+    auto j = t.to_json();
+    ActivityTree u;
+    CHECK(u.from_json(j));
+    CHECK(u.get(a1) && u.get(a1)->history.size() == 2 && u.get(a1)->history[1] == "pwd");
+
+    std::string cmd = "rm -rf '" + dir + "'";
+    if (dir.rfind("/tmp/canopy_act_", 0) == 0) (void)!system(cmd.c_str());
+}
+
 int main() {
     test_basic_tree();
     test_move_reorder_remove();
@@ -342,6 +405,7 @@ int main() {
     test_tree_json_roundtrip();
     test_from_json_validation_and_repair();
     test_save_load();
+    test_remove_one_and_history();
     std::printf("test_activity: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

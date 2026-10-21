@@ -35,12 +35,14 @@ void Switcher::rebuild() {
             if (p.live()) { std::string fg = p.session->pty().foreground_name(); if (!fg.empty()) hay += " " + fg; if (!p.last_title.empty()) hay += " " + p.last_title; }
             for (auto& b : p.attention_badges(now)) hay += " " + b;
             for (int i = std::max(0, p.block_count() - 6); i < p.block_count(); i++) hay += " " + p.block(i)->command;
+            const auto& rb = p.restored_blocks();
+            for (size_t i = rb.size() > 6 ? rb.size() - 6 : 0; i < rb.size(); i++) hay += " " + rb[i].command;
             std::string lq = to_lower(query_), lh = to_lower(hay);
             size_t at = lh.find(lq);
             if (at != std::string::npos) score = 100000 - (int)std::min<size_t>(at, 50000) + (at == 0 || lh[at - 1] == ' ' ? 20000 : 0);
             else { score = fuzzy_score(query_, hay); if (score <= 0) continue; }
         }
-        entries_.push_back({kv.first, score, {}});
+        entries_.push_back({kv.first, score, {}, {}});
     }
     std::stable_sort(entries_.begin(), entries_.end(), [&](const Entry& x, const Entry& y) {
         if (!query_.empty() && x.score != y.score) return x.score > y.score;
@@ -66,6 +68,13 @@ bool Switcher::key(const KeyEvent& ev) {
     if (ev.key == Key::Left) { step(-1); return true; }
     if (ev.key == Key::Down) { step(cols_); return true; }
     if (ev.key == Key::Up) { step(-cols_); return true; }
+    if ((ev.key == Key::Delete && query_.empty()) || (ctrl && ev.key == Key::Char && (ev.keysym == 'w' || ev.keysym == 'W'))) {
+        if (sel_ >= 0 && sel_ < (int)entries_.size()) {
+            app_.close_activity(entries_[sel_].id);
+            rebuild();
+        }
+        return true;
+    }
     if (ev.key == Key::Backspace) {
         if (!query_.empty()) { size_t i = query_.size() - 1; while (i > 0 && ((unsigned char)query_[i] & 0xC0) == 0x80) i--; query_.erase(i); rebuild(); }
         return true;
@@ -84,7 +93,17 @@ bool Switcher::text(const std::string& utf8) {
 bool Switcher::mouse_down(float sx, float sy, MouseButton b) {
     if (!open_) return false;
     for (size_t i = 0; i < entries_.size(); i++) if (entries_[i].r.contains(sx, sy)) {
-        if (b == MouseButton::Left) { uint64_t id = entries_[i].id; close(); app_.focus(id, true); }
+        if (b == MouseButton::Left) {
+            if (entries_[i].close_btn.contains(sx, sy)) {
+                app_.close_activity(entries_[i].id);
+                rebuild();
+                return true;
+            }
+            uint64_t id = entries_[i].id; close(); app_.focus(id, true);
+        } else if (b == MouseButton::Middle) {
+            app_.close_activity(entries_[i].id);
+            rebuild();
+        }
         return true;
     }
     close();
@@ -93,7 +112,14 @@ bool Switcher::mouse_down(float sx, float sy, MouseButton b) {
 
 void Switcher::mouse_move(float sx, float sy) {
     if (!open_) return;
-    for (size_t i = 0; i < entries_.size(); i++) if (entries_[i].r.contains(sx, sy)) { if ((int)i != sel_) { sel_ = (int)i; app_.request_redraw(); } return; }
+    uint64_t prev_close = hover_close_;
+    hover_close_ = 0;
+    for (size_t i = 0; i < entries_.size(); i++) if (entries_[i].r.contains(sx, sy)) {
+        if (entries_[i].close_btn.contains(sx, sy)) hover_close_ = entries_[i].id;
+        if ((int)i != sel_ || prev_close != hover_close_) { sel_ = (int)i; app_.request_redraw(); }
+        return;
+    }
+    if (prev_close != hover_close_) app_.request_redraw();
 }
 
 void Switcher::draw(const DrawCtx& ctx) {
@@ -115,7 +141,7 @@ void Switcher::draw(const DrawCtx& ctx) {
     std::string shown = query_.empty() ? "Which terminal?  type to filter by name, summary, directory or recent commands" : query_;
     r.draw_text(font, in.x + 40, in.y + 11 + asc, shown, query_.empty() ? alpha(fg, 0.45f) : col(th.foreground));
     if (!query_.empty()) { float cw = r.measure_text(font, query_); r.fill_rect({in.x + 41 + cw, in.y + 10, 2, app_.cell_h()}, col(th.cursor)); }
-    std::string hint = "Tab / arrows move · Enter opens · Esc cancels";
+    std::string hint = "Tab / arrows move · Enter opens · Del / Ctrl+W / × closes · Esc cancels";
     float hw = r.measure_text(font, hint, gfx::STYLE_REGULAR, 0.8f);
     r.draw_text(font, W - margin - hw, in.y + in.h + 18 + asc * 0.8f, hint, alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.8f);
     // grid
@@ -137,6 +163,7 @@ void Switcher::draw(const DrawCtx& ctx) {
         Entry& e = entries_[i];
         int row = (int)i / cols_ - row_off, c = (int)i % cols_;
         e.r = {margin + c * (card_w + gap), y0 + row * (card_h + gap), card_w, card_h};
+        e.close_btn = {e.r.x + e.r.w - 30.f, e.r.y + 8.f, 20.f, 20.f};
         if (row < 0 || e.r.y > H) continue;
         Pane* p = app_.pane(e.id); Activity* a = app_.tree().get(e.id);
         if (!p || !a) continue;
@@ -154,12 +181,18 @@ void Switcher::draw(const DrawCtx& ctx) {
             for (size_t k = bl.size(); k-- > 0;) { if (bl[k].state == BlockState::Running) { dot = col(th.accent); break; } if (bl[k].state == BlockState::Done) { dot = bl[k].exit_code == 0 ? col(th.ok) : col(th.error); break; } }
         } else if (p->session) dot = col(th.error);
         r.circle(x + 5, y + 9, 4.5f, dot);
-        r.push_clip({x + 16, y, e.r.w - 150, 22});
+        r.push_clip({x + 16, y, e.r.w - 175, 22});
         r.draw_text(font, x + 16, y + asc, a->name + (current ? "  (current)" : ""), col(th.foreground), gfx::STYLE_BOLD);
         r.pop_clip();
+        bool hot_close = hover_close_ == e.id;
+        RGBA cb_bg = hot_close ? alpha(col(th.error), 0.85f) : alpha(fg, sel ? 0.18f : 0.08f);
+        RGBA cb_fg = hot_close ? col(th.foreground) : alpha(fg, sel ? 0.85f : 0.55f);
+        r.rounded_rect(e.close_btn, 5.f, cb_bg);
+        float xw = r.measure_text(font, "×", gfx::STYLE_BOLD);
+        r.draw_text(font, e.close_btn.x + (e.close_btn.w - xw) / 2.f, y + asc, "×", cb_fg, gfx::STYLE_BOLD);
         std::string dir = pretty_path(p->cwd(), 24);
         float dw = r.measure_text(font, dir, gfx::STYLE_REGULAR, 0.8f);
-        r.draw_text(font, e.r.x + e.r.w - 12 - dw, y + asc, dir, alpha(fg, 0.6f), gfx::STYLE_REGULAR, 0.8f);
+        r.draw_text(font, e.close_btn.x - 8 - dw, y + asc, dir, alpha(fg, 0.6f), gfx::STYLE_REGULAR, 0.8f);
         // thumbnail
         Rect tb = {x, y + 24, e.r.w - 24, thumb_h};
         PeekRail::draw_miniature(app_, *p, tb, ctx, true);

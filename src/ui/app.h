@@ -83,6 +83,7 @@ public:
     void focus(uint64_t activity_id, bool fly = true);
     uint64_t new_activity(uint64_t parent, const std::string& name, const std::string& cwd, bool focus_it = true);
     void close_activity(uint64_t id);
+    void close_subtree(uint64_t id);
     void rename_activity(uint64_t id, const std::string& name);
     void add_note(uint64_t id, const std::string& note);
     // Create a child activity under `parent` and run `command` in it once the prompt is ready.

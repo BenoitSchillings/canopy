@@ -9,6 +9,7 @@ class Sidebar {
 public:
     explicit Sidebar(App& app);
     bool visible = true;
+    bool compact = false;           // compact tree mode (no thumbnails) vs miniature cards
     float width = 240.f;
     Rect rect;                      // screen space
     void draw(const DrawCtx& ctx);
@@ -25,6 +26,7 @@ private:
         int depth = 0;
         Rect r;
         Rect arrow;
+        Rect close_btn;
         bool has_children = false;
         std::string label, sub;
     };
@@ -33,6 +35,7 @@ private:
     std::vector<Row> rows_;
     float scroll_ = 0;
     int hover_ = -1;
+    int hover_close_ = -1;
     float content_h_ = 0;
     uint64_t drag_id_ = 0; float drag_y_ = 0; bool dragging_ = false;
     int drop_index_ = -1;

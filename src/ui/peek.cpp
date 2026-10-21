@@ -27,6 +27,9 @@ std::vector<std::string> PeekRail::wrap_text(gfx::Renderer& r, gfx::Font& font, 
 }
 
 void PeekRail::draw_miniature(App& app, Pane& p, Rect box, const DrawCtx& base, bool align_bottom) {
+    Activity* a = app.tree().get(p.activity_id);
+    bool was_min = a && a->minimized;
+    if (was_min) a->minimized = false;
     gfx::Renderer& r = app.renderer();
     float s = std::min(box.w / p.width(), box.h / p.height());
     bool clip_tall = false;
@@ -42,6 +45,7 @@ void PeekRail::draw_miniature(App& app, Pane& p, Rect box, const DrawCtx& base, 
     p.draw(r, app.font(), ctx);
     r.set_transform({1, 0, 0});
     r.pop_clip();
+    if (was_min) a->minimized = true;
 }
 
 void PeekRail::build_cards() {
@@ -60,7 +64,9 @@ void PeekRail::build_cards() {
         std::string text = p->summary.empty() ? p->local_summary() : p->summary;
         auto lines = wrap_text(r, font, text, inner - 2 * CARD_PAD, 0.9f, 3);
         float h = CARD_PAD + 22 + thumb_h + 8 + lines.size() * (app_.cell_h() * 0.9f + 2) + 22 + CARD_PAD;
-        cards_.push_back({p->activity_id, {rect.x + CARD_PAD, y, inner, h}});
+        Rect cr = {rect.x + CARD_PAD, y, inner, h};
+        Rect cb = {cr.x + cr.w - CARD_PAD - 18.f, cr.y + CARD_PAD - 1.f, 18.f, 18.f};
+        cards_.push_back({p->activity_id, cr, cb});
         y += h + 10;
     }
     content_h_ = y + scroll_ - rect.y + 10;
@@ -108,14 +114,20 @@ void PeekRail::draw(const DrawCtx& ctx) {
         } else if (p->session) dot = col(th.error);
         r.circle(hx + 5, hy + 8, 4, dot);
         if (running) r.circle(hx + 5, hy + 8, 6.5f + 1.5f * (float)std::sin(ctx.now * 6), alpha(dot, 0.25f));
-        r.push_clip({hx + 14, hy, c.r.w - 2 * CARD_PAD - 80, 20});
+        r.push_clip({hx + 14, hy, c.r.w - 2 * CARD_PAD - 102, 20});
         r.draw_text(font, hx + 14, hy + asc * 0.85f, a->name, col(th.foreground), gfx::STYLE_BOLD, 0.9f);
         r.pop_clip();
+        bool hot_close = hover_close_ == c.id;
+        RGBA cb_bg = hot_close ? alpha(col(th.error), 0.85f) : alpha(fg, hot ? 0.16f : 0.08f);
+        RGBA cb_fg = hot_close ? col(th.foreground) : alpha(fg, hot ? 0.85f : 0.5f);
+        r.rounded_rect(c.close_btn, 4.f, cb_bg);
+        float xw = r.measure_text(font, "×", gfx::STYLE_BOLD, 0.85f);
+        r.draw_text(font, c.close_btn.x + (c.close_btn.w - xw) / 2.f, c.close_btn.y + 2 + asc * 0.85f, "×", cb_fg, gfx::STYLE_BOLD, 0.85f);
         double age = ctx.now - std::max(p->last_output, p->last_finish);
         std::string ag = p->last_output > 0 ? (age < 5 ? "now" : fmt_duration(age) + " ago") : "";
         if (p->unread) ag = "● " + ag;
         float aw = r.measure_text(font, ag, gfx::STYLE_REGULAR, 0.75f);
-        r.draw_text(font, c.r.x + c.r.w - CARD_PAD - aw, hy + asc * 0.85f, ag, p->unread ? col(th.warning) : alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.75f);
+        r.draw_text(font, c.close_btn.x - 6 - aw, hy + asc * 0.85f, ag, p->unread ? col(th.warning) : alpha(fg, 0.5f), gfx::STYLE_REGULAR, 0.75f);
         // miniature
         float inner = c.r.w - 2 * CARD_PAD;
         float thumb_h = std::min(THUMB_MAX_H, p->height() * inner / p->width());
@@ -152,9 +164,14 @@ void PeekRail::draw(const DrawCtx& ctx) {
 
 bool PeekRail::mouse_down(float sx, float sy, MouseButton b, int clicks) {
     if (!visible || !rect.contains(sx, sy)) return false;
+    build_cards();
     for (const Card& c : cards_) if (c.r.contains(sx, sy)) {
-        if (b == MouseButton::Left) app_.focus(c.id, true);
-        else if (b == MouseButton::Right) {
+        if (b == MouseButton::Left) {
+            if (c.close_btn.contains(sx, sy)) app_.close_activity(c.id);
+            else app_.focus(c.id, true);
+        } else if (b == MouseButton::Middle) {
+            app_.close_activity(c.id);
+        } else if (b == MouseButton::Right) {
             uint64_t id = c.id;
             app_.show_menu(sx, sy, {
                 {"Go to terminal", [this, id] { app_.focus(id, true); }},
@@ -168,10 +185,16 @@ bool PeekRail::mouse_down(float sx, float sy, MouseButton b, int clicks) {
 }
 
 void PeekRail::mouse_move(float sx, float sy) {
-    uint64_t prev = hover_;
-    hover_ = 0;
-    if (visible && rect.contains(sx, sy)) for (const Card& c : cards_) if (c.r.contains(sx, sy)) { hover_ = c.id; break; }
-    if (prev != hover_) app_.request_redraw();
+    uint64_t prev = hover_, prev_close = hover_close_;
+    hover_ = 0; hover_close_ = 0;
+    if (visible && rect.contains(sx, sy)) {
+        for (const Card& c : cards_) if (c.r.contains(sx, sy)) {
+            hover_ = c.id;
+            if (c.close_btn.contains(sx, sy)) hover_close_ = c.id;
+            break;
+        }
+    }
+    if (prev != hover_ || prev_close != hover_close_) app_.request_redraw();
 }
 
 void PeekRail::wheel(float dy) {

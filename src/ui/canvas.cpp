@@ -266,14 +266,31 @@ void Canvas::mouse_down(float sx, float sy, MouseButton b, int clicks, uint32_t 
     moved_ = false;
     Pane* p = pane_at(wx, wy);
     bool pan_mod = (mods & MOD_ALT) && b == MouseButton::Left;
-    if (p && !pan_mod && !(b == MouseButton::Middle && !p->term_rect().contains(wx, wy))) {
+    if (p && !pan_mod && !(b == MouseButton::Middle && !p->term_rect().contains(wx, wy) && !p->title_rect().contains(wx, wy))) {
+        if (b == MouseButton::Left && p->close_rect().contains(wx, wy) && scale * app_.cell_h() >= 2.5f) {
+            app_.close_activity(p->activity_id);
+            return;
+        }
+        if (b == MouseButton::Left && p->min_rect().contains(wx, wy) && scale * app_.cell_h() >= 2.5f) {
+            p->toggle_minimized();
+            return;
+        }
+        if (b == MouseButton::Middle && p->title_rect().contains(wx, wy)) {
+            app_.close_activity(p->activity_id);
+            return;
+        }
         bring_to_front(p->activity_id);
         if (overview_) {
             app_.focus(p->activity_id, true);
             overview_ = false;
             return;
         }
-        if (b == MouseButton::Left && p->resize_handle().contains(wx, wy)) {
+        if (p->minimized() && b == MouseButton::Left && !p->title_rect().contains(wx, wy)) {
+            p->set_minimized(false);
+            app_.focus(p->activity_id, true);
+            return;
+        }
+        if (b == MouseButton::Left && !p->minimized() && p->resize_handle().contains(wx, wy)) {
             drag_ = Resize; drag_pane_ = p; drag_x_ = wx; drag_y_ = wy; drag_cols_ = p->cols; drag_rows_ = p->rows;
             app_.focus(p->activity_id, false);
             return;
@@ -285,15 +302,21 @@ void Canvas::mouse_down(float sx, float sy, MouseButton b, int clicks, uint32_t 
             return;
         }
         if (b == MouseButton::Right && p->title_rect().contains(wx, wy)) {
-            app_.focus(p->activity_id, false);
+            uint64_t pid = p->activity_id;
+            app_.focus(pid, false);
+            Activity* a = app_.tree().get(pid);
             std::vector<MenuItem> items = {
                 {"New child activity", [this] { app_.run_action("activity.new_child"); }},
                 {"Rename…", [this] { app_.run_action("activity.rename"); }},
                 {"Add note…", [this] { app_.run_action("activity.note"); }},
+                {p->minimized() ? "Expand pane" : "Minimize pane", [p] { p->toggle_minimized(); }},
                 {"Restart shell", [this] { app_.run_action("activity.restart"); }},
                 {"-", nullptr},
-                {"Close activity", [this] { app_.run_action("activity.close"); }},
+                {"Close activity", [this, pid] { app_.close_activity(pid); }},
             };
+            if (a && !a->children.empty()) {
+                items.push_back({"Close activity & children", [this, pid] { app_.close_subtree(pid); }});
+            }
             app_.show_menu(sx, sy, std::move(items));
             return;
         }

@@ -54,11 +54,16 @@ public:
     static constexpr float TITLE_H = 30.f, GUTTER_W = 18.f, PAD = 6.f, RADIUS = 10.f, HANDLE = 14.f;
     Rect rect() const;
     Rect title_rect() const;
+    Rect min_rect() const;
+    Rect close_rect() const;
     Rect term_rect() const;
     Rect gutter_rect() const;
     Rect resize_handle() const;
     float width() const { return rect().w; }
     float height() const { return rect().h; }
+    bool minimized() const;
+    void set_minimized(bool m);
+    void toggle_minimized() { set_minimized(!minimized()); }
 
     // ---- session ----
     std::unique_ptr<Session> session;
@@ -95,6 +100,8 @@ public:
     void scroll_to_bottom();
     void scroll_to_abs(int64_t abs);
     bool following() const { return follow_; }
+    int64_t lines_below() const;
+    Rect scroll_pill_rect() const;
 
     // ---- blocks ----
     int block_count() const;
@@ -116,6 +123,7 @@ public:
     std::vector<Block> export_blocks(int max_blocks, int tail_lines) const;
     void load_restored(const std::vector<Block>& saved);
     bool has_restored() const { return !restored_.empty(); }
+    const std::vector<Block>& restored_blocks() const { return restored_blocks_; }
 
     // ---- search ----
     void set_search(const std::string& q);
@@ -129,7 +137,7 @@ public:
         bool valid = false;
         int64_t abs = -1; int col = -1; int row = -1;
         int block = -1;
-        bool gutter = false, title = false, handle = false, summary = false, chip = false, header = false;
+        bool gutter = false, title = false, min_btn = false, close_btn = false, handle = false, summary = false, chip = false, header = false, scroll_pill = false;
         int table_col = -1;
         std::optional<Span> span;
         const Hyperlink* link = nullptr;
@@ -155,6 +163,11 @@ public:
     std::vector<std::string> attention_badges(double now) const;
 
     // ---- state ----
+    enum class AgentState : uint8_t { None = 0, Streaming, WaitingInput, NeedsApproval };
+    AgentState agent_state() const { return agent_state_; }
+    bool waiting_for_user() const { return agent_state_ == AgentState::WaitingInput || agent_state_ == AgentState::NeedsApproval || bell_unread_; }
+    bool is_agent_session() const;
+    void clear_attention();
     bool unread = false;
     double last_output = 0;
     double last_finish = 0;
@@ -180,8 +193,10 @@ private:
     void draw_cursor(gfx::Renderer& r, const DrawCtx& ctx);
     void draw_title(gfx::Renderer& r, gfx::Font& font, const DrawCtx& ctx);
     void draw_scrollbar(gfx::Renderer& r, const DrawCtx& ctx);
+    void draw_scroll_pill(gfx::Renderer& r, gfx::Font& font, const DrawCtx& ctx);
     void draw_dormant(gfx::Renderer& r, gfx::Font& font, const DrawCtx& ctx);
     void draw_summary_banner(gfx::Renderer& r, gfx::Font& font, const DrawCtx& ctx);
+    void update_agent_state(double now);
     void scan_block(const Block& b, BlockView& v);
     void extend_selection(int64_t abs, int col);
     bool selected(int64_t abs, int col) const;
@@ -196,6 +211,7 @@ private:
     uint64_t vis_gen_ = ~0ull;
     bool vis_dirty_ = true;
     int64_t top_ = 0;
+    int64_t anchor_abs_ = INT64_MIN;
     bool follow_ = true;
     Selection sel_;
     bool selecting_ = false;
@@ -212,6 +228,13 @@ private:
     int64_t last_history_base_ = 0;
     size_t last_block_count_ = 0;
     double exited_at_ = 0;
+    double last_input_ = 0;
+    double sync_start_ = 0;
+    bool output_since_input_ = false;
+    bool agent_notified_ = false;
+    bool bell_unread_ = false;
+    std::string notify_msg_;
+    AgentState agent_state_ = AgentState::None;
     std::string err_;
 };
 

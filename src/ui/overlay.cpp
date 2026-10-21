@@ -70,19 +70,30 @@ void Overlay::build_palette_candidates() {
         for (uint64_t cur = a->parent; cur; ) { Activity* p = t.get(cur); if (!p) break; path = p->name + " › " + path; cur = p->parent; }
         all_.push_back({"→ " + a->name, path.empty() ? "activity" : path, "", [this, id] { app_.focus(id, true); }});
     }
-    // recent commands across panes (live + restored)
+    // recent commands across panes (live + restored + persistent history)
     struct Rec { uint64_t act; uint64_t block; std::string cmd; int64_t when; std::string actname; int exit; };
     std::vector<Rec> recs;
     for (auto& kv : app_.panes()) {
         Pane& p = *kv.second;
         Activity* a = t.get(kv.first);
+        std::string aname = a ? a->name : "";
+        for (const Block& b : p.restored_blocks()) {
+            if (b.command.empty()) continue;
+            recs.push_back({kv.first, b.id, b.command, b.unix_start, aname, b.exit_code});
+        }
         for (int i = 0; i < p.block_count(); i++) {
             const Block* b = p.block(i);
             if (b->command.empty()) continue;
-            recs.push_back({kv.first, b->id, b->command, b->unix_start, a ? a->name : "", b->exit_code});
+            recs.push_back({kv.first, b->id, b->command, b->unix_start, aname, b->exit_code});
+        }
+        auto hist = ActivityTree::load_history(kv.first);
+        size_t hs = hist.size() > 100 ? hist.size() - 100 : 0;
+        for (size_t i = hs; i < hist.size(); i++) {
+            if (hist[i].empty()) continue;
+            recs.push_back({kv.first, 0, hist[i], (int64_t)i, aname, -1});
         }
     }
-    std::sort(recs.begin(), recs.end(), [](const Rec& x, const Rec& y) { return x.when > y.when; });
+    std::stable_sort(recs.begin(), recs.end(), [](const Rec& x, const Rec& y) { return x.when > y.when; });
     std::vector<std::string> seen;
     for (auto& r : recs) {
         if (std::find(seen.begin(), seen.end(), r.cmd) != seen.end()) continue;
@@ -93,7 +104,8 @@ void Overlay::build_palette_candidates() {
         all_.push_back({"$ " + r.cmd, r.actname + (r.exit == 0 ? "  ✓" : r.exit > 0 ? "  ✗" : ""), "", [this, act, bid, cmd] {
             app_.focus(act, true);
             if (Pane* p = app_.pane(act)) {
-                for (int k = 0; k < p->block_count(); k++) if (p->block(k)->id == bid) { p->select_block(k, true); return; }
+                for (int k = 0; k < p->block_count(); k++) if (p->block(k)->id == bid && bid != 0) { p->select_block(k, true); return; }
+                if (p->at_prompt()) p->write(cmd);
             }
         }});
     }
@@ -362,10 +374,11 @@ void Overlay::draw(const DrawCtx& ctx) {
             "Canopy — keys",
             "",
             "Ctrl+Shift+N      new child activity        Ctrl+Shift+T      new sibling activity",
-            "Ctrl+Shift+W      close activity            Ctrl+Shift+R      rename activity",
+            "Ctrl+Shift+W / ×  close activity            Ctrl+Shift+R      rename activity",
             "Ctrl+Alt+Arrows   move focus between panes  Ctrl+Shift+O      overview (zoom out to all)",
             "Ctrl+Shift+B      toggle sidebar            Ctrl+Shift+P      command palette",
             "Ctrl+Tab          find a terminal (miniatures + summaries)   Ctrl+Shift+M   peek rail",
+            "Ctrl+Shift+U      jump to next terminal needing input / approval",
             "Ctrl+wheel        zoom canvas               Ctrl+= / Ctrl+-   zoom in / out, Ctrl+0 reset",
             "Ctrl+Shift+= / -  font size                 Alt+drag / middle-drag   pan the canvas",
             "",
@@ -376,10 +389,10 @@ void Overlay::draw(const DrawCtx& ctx) {
             "Table header      click to sort (again: descending, again: clear)",
             "",
             "Ctrl+Shift+C / V  copy / paste              Shift+Insert / middle click   paste primary",
-            "Ctrl+Shift+F      search scrollback         Shift+PgUp/PgDn   scroll",
-            "Ctrl+click        open path / URL           Right-click       context menu",
+            "Shift+Enter       multi-line newline (claude / agy / bash)   Ctrl+Shift+F   search scrollback",
+            "Ctrl+click        open path / URL / #L123   Right-click       context menu",
             "",
-            "Shell:  canopy new <name> · canopy note <text> · canopy name <name> · canopy mark",
+            "Shell:  canopy new <name> · canopy close · canopy note <text> · canopy name <name> · canopy mark · canopy history",
             "",
             "Ctrl+Shift+H or Esc closes this help",
         };

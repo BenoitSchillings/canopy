@@ -63,16 +63,35 @@ std::string encode_key(const KeyEvent& ev, const TerminalModes& modes) {
         if (mod) return csi_mod("1", mod, std::string(1, fin).c_str());
         return std::string("\x1bO") + fin;
     };
+    auto csi_u = [&](uint32_t codepoint) {
+        char buf[32];
+        if (mod) snprintf(buf, sizeof buf, "\x1b[%u;%du", (unsigned)codepoint, mod);
+        else snprintf(buf, sizeof buf, "\x1b[%uu", (unsigned)codepoint);
+        return std::string(buf);
+    };
+    auto modify_other = [&](uint32_t codepoint) {
+        char buf[32];
+        snprintf(buf, sizeof buf, "\x1b[27;%d;%u~", mod, (unsigned)codepoint);
+        return std::string(buf);
+    };
 
     switch (ev.key) {
     case Key::None: return "";
     case Key::Char: {
         char32_t base = ev.keysym;
         if (base == 0 && !ev.text.empty()) utf8_decode_one(ev.text, &base);
+        if (ctrl && shift && ((base >= 'a' && base <= 'z') || (base >= 'A' && base <= 'Z'))) return "";   // UI-reserved
+        if (modes.kitty_keyboard && (ctrl || alt) && base >= 0x20) {
+            char32_t lower_cp = (base >= 'A' && base <= 'Z') ? (base + 32) : base;
+            return csi_u(lower_cp);
+        }
+        if (modes.modify_other_keys >= 2 && (ctrl || alt) && base >= 0x20) {
+            return modify_other(base);
+        }
         if (ctrl) {
-            if (shift && ((base >= 'a' && base <= 'z') || (base >= 'A' && base <= 'Z'))) return "";   // UI-reserved
             char c;
             if (ctrl_char(base, &c)) return alt_prefix(std::string(1, c));
+            if (modes.modify_other_keys >= 1 && base >= 0x20) return modify_other(base);
             if (!ev.text.empty() && ((unsigned char)ev.text[0] < 0x80)) {
                 char32_t t = (unsigned char)ev.text[0];
                 if (ctrl_char(t, &c)) return alt_prefix(std::string(1, c));
@@ -83,18 +102,30 @@ std::string encode_key(const KeyEvent& ev, const TerminalModes& modes) {
         return alt_prefix(ev.text);
     }
     case Key::Space:
+        if (modes.kitty_keyboard && mod) return csi_u(32);
+        if (modes.modify_other_keys >= 1 && shift && !ctrl && !alt) return modify_other(32);
         if (ctrl) return alt_prefix(std::string(1, '\0'));
         return alt_prefix(" ");
     case Key::Enter:
     case Key::KPEnter:
         if (ev.key == Key::KPEnter && modes.app_keypad && !mod) return "\x1bOM";
+        if (modes.kitty_keyboard && mod) return csi_u(13);
+        if (modes.modify_other_keys >= 1 && mod) return modify_other(13);
+        if (shift && !ctrl) return "\x1b\r";   // multi-line newline in claude, agy, Ink TUIs, and readline
+        if (ctrl && !shift) return alt_prefix("\n");
         return alt_prefix(modes.lnm ? "\r\n" : "\r");
     case Key::Tab:
+        if (modes.kitty_keyboard && (ctrl || alt)) return csi_u(9);
+        if (modes.modify_other_keys >= 1 && (ctrl || alt)) return modify_other(9);
         if (shift) return alt_prefix("\x1b[Z");
         return alt_prefix("\t");
     case Key::Backspace:
+        if (modes.kitty_keyboard && mod) return csi_u(127);
+        if (modes.modify_other_keys >= 1 && mod) return modify_other(127);
         return alt_prefix(ctrl ? "\x08" : "\x7f");
     case Key::Escape:
+        if (modes.kitty_keyboard && mod) return csi_u(27);
+        if (modes.modify_other_keys >= 1 && mod) return modify_other(27);
         return alt_prefix("\x1b");
     case Key::Up: return cursor_key('A');
     case Key::Down: return cursor_key('B');

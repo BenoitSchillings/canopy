@@ -419,6 +419,55 @@ static void test_charsets_and_misc() {
     Terminal z(1, 1); z.feed("abc\r\n\xe4\xb8\xad"); CHECK_EQ(z.cols(), 1);
 }
 
+static void test_modern_agent_protocols() {
+    Terminal t(20, 4);
+    Replies r; r.attach(t);
+    // Synchronized output (DECSET 2026)
+    t.feed("BeforeSync");
+    CHECK_EQ(row_text(t, 0), "BeforeSync");
+    t.feed("\x1b[?2026h");
+    CHECK(t.modes().synchronized_output);
+    t.feed("\x1b[?2026$p");
+    CHECK_EQ(r.take(), "\x1b[?2026;1$y");
+    // While in synchronized output mode, visible row() and cursor() reflect the pre-sync snapshot
+    t.feed("\x1b[2J\x1b[HAfterSync");
+    CHECK_EQ(row_text(t, 0), "BeforeSync");
+    t.feed("\x1b[?2026l");
+    CHECK(!t.modes().synchronized_output);
+    CHECK_EQ(row_text(t, 0), "AfterSync");
+
+    // Kitty keyboard protocol push / query / pop
+    CHECK(!t.modes().kitty_keyboard);
+    t.feed("\x1b[>1u");
+    CHECK(t.modes().kitty_keyboard);
+    CHECK_EQ(t.modes().kitty_flags, 1u);
+    t.feed("\x1b[?u");
+    CHECK_EQ(r.take(), "\x1b[?1u");
+    t.feed("\x1b[>3u");
+    CHECK_EQ(t.modes().kitty_flags, 3u);
+    t.feed("\x1b[<1u");
+    CHECK_EQ(t.modes().kitty_flags, 1u);
+    t.feed("\x1b[<1u");
+    CHECK(!t.modes().kitty_keyboard);
+    CHECK_EQ(t.modes().kitty_flags, 0u);
+
+    // xterm modifyOtherKeys
+    t.feed("\x1b[>4;2m");
+    CHECK_EQ((int)t.modes().modify_other_keys, 2);
+    t.feed("\x1b[>4m");
+    CHECK_EQ((int)t.modes().modify_other_keys, 0);
+
+    // OSC 9 and OSC 777 notifications
+    std::string ntitle, nbody;
+    t.on_notify = [&](const std::string& ti, const std::string& bo) { ntitle = ti; nbody = bo; };
+    t.feed("\x1b]9;Claude needs permission\x07");
+    CHECK_EQ(ntitle, "");
+    CHECK_EQ(nbody, "Claude needs permission");
+    t.feed("\x1b]777;notify;agy;Task complete\x07");
+    CHECK_EQ(ntitle, "agy");
+    CHECK_EQ(nbody, "Task complete");
+}
+
 static void test_throughput() {
     std::string line;
     for (int i = 0; i < 79; ++i) line.push_back((char)('a' + i % 26));
@@ -461,6 +510,7 @@ int main() {
     test_text_extraction();
     test_replies();
     test_charsets_and_misc();
+    test_modern_agent_protocols();
     test_throughput();
     printf("test_terminal: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

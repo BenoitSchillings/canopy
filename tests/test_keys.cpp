@@ -17,6 +17,9 @@ int main() {
     TerminalModes app; app.app_cursor_keys = true; app.app_keypad = true;
     TerminalModes lnm; lnm.lnm = true;
     TerminalModes noalt; noalt.alt_sends_esc = false;
+    TerminalModes kitty; kitty.kitty_keyboard = true; kitty.kitty_flags = 1;
+    TerminalModes mok1; mok1.modify_other_keys = 1;
+    TerminalModes mok2; mok2.modify_other_keys = 2;
 
     struct Case { KeyEvent ev; const TerminalModes* m; const char* want; };
     const Case cases[] = {
@@ -42,8 +45,17 @@ int main() {
         {K(Key::Space, MOD_ALT), &normal, "\x1b "},
         {K(Key::Enter), &normal, "\r"},
         {K(Key::Enter), &lnm, "\r\n"},
+        {K(Key::Enter, MOD_SHIFT), &normal, "\x1b\r"},
         {K(Key::Enter, MOD_ALT), &normal, "\x1b\r"},
-        {K(Key::Enter, MOD_CTRL), &normal, "\r"},
+        {K(Key::Enter, MOD_CTRL), &normal, "\n"},
+        {K(Key::Enter), &kitty, "\r"},
+        {K(Key::Enter, MOD_SHIFT), &kitty, "\x1b[13;2u"},
+        {K(Key::Enter, MOD_ALT), &kitty, "\x1b[13;3u"},
+        {K(Key::Enter, MOD_CTRL), &kitty, "\x1b[13;5u"},
+        {C("", MOD_CTRL, 'a'), &kitty, "\x1b[97;5u"},
+        {K(Key::Enter, MOD_SHIFT), &mok1, "\x1b[27;2;13~"},
+        {K(Key::Enter, MOD_CTRL), &mok1, "\x1b[27;5;13~"},
+        {C("", MOD_CTRL, 'a'), &mok2, "\x1b[27;5;97~"},
         {K(Key::Tab), &normal, "\t"},
         {K(Key::Tab, MOD_SHIFT), &normal, "\x1b[Z"},
         {K(Key::Backspace), &normal, "\x7f"},

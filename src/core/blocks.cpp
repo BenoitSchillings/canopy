@@ -181,7 +181,7 @@ void BlockTracker::on_osc(const OscEvent& ev) {
             }
         } else if (kind == "mark") {
             if (cur) cur->marks.push_back(payload);
-        } else if (kind == "new" || kind == "note" || kind == "name") {
+        } else if (kind == "new" || kind == "note" || kind == "name" || kind == "close") {
             if (on_request) on_request(kind, payload);
         }
         return;

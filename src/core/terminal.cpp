@@ -33,6 +33,8 @@ struct ScreenState {
     int x = 0, y = 0;
     SavedCursor saved;
     std::vector<uint8_t> dirty;
+    uint32_t kitty_flags = 0;
+    std::vector<uint32_t> kitty_stack;
 };
 
 const char32_t DEC_GRAPHICS[32] = {
@@ -132,6 +134,8 @@ struct Terminal::Impl : VtHandler {
     int scrollback_max;
     ScreenState primary, alt;
     ScreenState* scr = &primary;
+    ScreenState sync_snap;
+    bool sync_snap_valid = false;
     std::deque<Line> history;
     int64_t history_base = 0;
 
@@ -468,14 +472,26 @@ struct Terminal::Impl : VtHandler {
         ++gen;
     }
 
+    void sync_kitty_mode() {
+        modes.kitty_flags = scr->kitty_flags;
+        modes.kitty_keyboard = (modes.kitty_flags != 0);
+    }
+
     void switch_screen(bool to_alt, bool clear_alt) {
         if (to_alt == modes.alt_screen) {
             if (to_alt && clear_alt) { for (auto& l : alt.lines) clear_line(l); dirty_all(); }
             return;
         }
         modes.alt_screen = to_alt;
+        modes.synchronized_output = false;
+        sync_snap_valid = false;
         scr = to_alt ? &alt : &primary;
-        if (to_alt && clear_alt) for (auto& l : alt.lines) clear_line(l);
+        if (to_alt && clear_alt) {
+            for (auto& l : alt.lines) clear_line(l);
+            alt.kitty_flags = 0;
+            alt.kitty_stack.clear();
+        }
+        sync_kitty_mode();
         pending_wrap = false;
         dirty_all();
         if (owner.on_alt_screen) owner.on_alt_screen(to_alt);
@@ -488,6 +504,12 @@ struct Terminal::Impl : VtHandler {
         modes.app_cursor_keys = false;
         modes.app_keypad = false;
         modes.autowrap = true;
+        modes.synchronized_output = false;
+        sync_snap_valid = false;
+        modes.modify_other_keys = 0;
+        scr->kitty_flags = 0;
+        scr->kitty_stack.clear();
+        sync_kitty_mode();
         scroll_top = 0; scroll_bottom = rows - 1;
         pen = Pen{};
         g[0] = g[1] = 'B'; gl = 0;
@@ -498,6 +520,8 @@ struct Terminal::Impl : VtHandler {
 
     void full_reset() {
         if (modes.alt_screen) switch_screen(false, false);
+        primary.kitty_flags = alt.kitty_flags = 0;
+        primary.kitty_stack.clear(); alt.kitty_stack.clear();
         modes = TerminalModes{};
         cursor_meta = Cursor{};
         soft_reset();
@@ -764,6 +788,17 @@ void Terminal::Impl::set_dec_mode(int m, bool set) {
         else { switch_screen(false, false); restore_cursor(); }
         break;
     case 2004: modes.bracketed_paste = set; break;
+    case 2026:
+        if (set && !modes.synchronized_output) {
+            sync_snap = *scr;
+            sync_snap_valid = true;
+            modes.synchronized_output = true;
+        } else if (!set && modes.synchronized_output) {
+            modes.synchronized_output = false;
+            sync_snap_valid = false;
+            dirty_all();
+        }
+        break;
     default: break;
     }
     ++gen;
@@ -793,6 +828,7 @@ int Terminal::Impl::dec_mode_state(int m) const {
     case 1016: return b(modes.mouse_enc == MouseEncoding::SgrPixels);
     case 1036: case 1039: return b(modes.alt_sends_esc);
     case 2004: return b(modes.bracketed_paste);
+    case 2026: return b(modes.synchronized_output);
     default: return 0;
     }
 }
@@ -908,6 +944,12 @@ void Terminal::Impl::csi_dispatch(const CsiParams& p, std::string_view inter, ui
             else if (p.get(0, 0) == 25) write("\x1b[?21n");
             else if (p.get(0, 0) == 26) write("\x1b[?27;1;0;0n");
             break;
+        case 'u': {
+            char buf[32];
+            snprintf(buf, sizeof buf, "\x1b[?%uu", (unsigned)modes.kitty_flags);
+            write(buf);
+            break;
+        }
         default: break;
         }
         return;
@@ -928,12 +970,49 @@ void Terminal::Impl::csi_dispatch(const CsiParams& p, std::string_view inter, ui
         switch (f) {
         case 'c': write("\x1b[>41;377;0c"); break;        // DA2: xterm-ish
         case 'q': write("\x1bP>|Canopy 0.1\x1b\\"); break; // XTVERSION
-        default: break;   // XTMODKEYS, title modes, etc.
+        case 'm': {   // XTMODKEYS (modifyOtherKeys: CSI > 4 ; level m)
+            if (p.count == 0 || p.get(0, 0) == 4) {
+                modes.modify_other_keys = (uint8_t)std::clamp(p.get(1, 0), 0, 2);
+            }
+            break;
+        }
+        case 'u': {   // Kitty keyboard protocol push: CSI > flags u
+            if (scr->kitty_stack.size() >= 16) scr->kitty_stack.erase(scr->kitty_stack.begin());
+            scr->kitty_stack.push_back(scr->kitty_flags);
+            scr->kitty_flags = (uint32_t)std::max(0, p.get(0, 0));
+            sync_kitty_mode();
+            break;
+        }
+        default: break;
+        }
+        return;
+    }
+    if (inter == "<") {
+        if (f == 'u') {   // Kitty keyboard protocol pop: CSI < count u
+            int cnt = std::max(1, p.get(0, 1));
+            while (cnt-- > 0) {
+                if (!scr->kitty_stack.empty()) {
+                    scr->kitty_flags = scr->kitty_stack.back();
+                    scr->kitty_stack.pop_back();
+                } else {
+                    scr->kitty_flags = 0;
+                    break;
+                }
+            }
+            sync_kitty_mode();
         }
         return;
     }
     if (inter == "=") {
         if (f == 'c') write("\x1bP!|00000000\x1b\\");   // DA3
+        else if (f == 'u') {   // Kitty keyboard protocol set: CSI = flags ; mode u
+            uint32_t fl = (uint32_t)std::max(0, p.get(0, 0));
+            int mode = p.get(1, 1);
+            if (mode == 1) scr->kitty_flags = fl;
+            else if (mode == 2) scr->kitty_flags |= fl;
+            else if (mode == 3) scr->kitty_flags &= ~fl;
+            sync_kitty_mode();
+        }
         return;
     }
     if (inter == " " && f == 'q') {   // DECSCUSR
@@ -1098,8 +1177,34 @@ void Terminal::Impl::osc_dispatch(std::string_view payload) {
         }
         return;
     }
+    case 9: {
+        // OSC 9 ; message ST (ignore OSC 9 ; 4 ; ... progress bars)
+        if (!ev.args.empty() && ev.args[0] != "4" && !rest.empty()) {
+            if (owner.on_notify) owner.on_notify("", std::string(rest));
+        }
+        forward();
+        return;
+    }
+    case 777: {
+        // OSC 777 ; notify ; title ; body ST
+        if (ev.args.size() >= 2 && ev.args[0] == "notify") {
+            std::string ntitle = ev.args.size() >= 3 ? ev.args[1] : "";
+            std::string nbody = ev.args.size() >= 3 ? ev.args[2] : ev.args[1];
+            if (owner.on_notify) owner.on_notify(ntitle, nbody);
+        }
+        forward();
+        return;
+    }
+    case 99: {
+        // Kitty desktop notification: OSC 99 ; params ; payload ST
+        if (ev.args.size() >= 2 && !ev.args[1].empty()) {
+            if (owner.on_notify) owner.on_notify("", ev.args[1]);
+        }
+        forward();
+        return;
+    }
     default:
-        forward();   // 133, 7770, 9, 777, 1337, 99, ... all forwarded
+        forward();   // 133, 7770, 1337, ... all forwarded
         return;
     }
 }
@@ -1203,6 +1308,8 @@ void Terminal::Impl::resize(int nc, int nr) {
     }
     scroll_top = 0; scroll_bottom = rows - 1;
     pending_wrap = false;
+    modes.synchronized_output = false;
+    sync_snap_valid = false;
     // Tab stops: keep existing, extend with every-8 defaults.
     size_t old = tabs.size();
     tabs.resize((size_t)cols, 0);
@@ -1216,8 +1323,9 @@ const Line* Terminal::Impl::line_abs_ptr(int64_t a) const {
     if (a < history_base + hi) return &history[(size_t)(a - history_base)];
     int64_t y = a - history_base - hi;
     if (y < 0 || y >= rows) return nullptr;
+    const ScreenState* s = (modes.synchronized_output && sync_snap_valid && (int)sync_snap.lines.size() == rows) ? &sync_snap : scr;
     // Screen rows: the current screen (so selection works on the alt screen as well).
-    return &scr->lines[(size_t)y];
+    return &s->lines[(size_t)y];
 }
 
 const Line& Terminal::Impl::line_abs(int64_t a) const {
@@ -1239,7 +1347,8 @@ int Terminal::rows() const { return impl_->rows; }
 const Line& Terminal::row(int y) const {
     static const Line empty;
     if (y < 0 || y >= impl_->rows) return empty;
-    return impl_->scr->lines[(size_t)y];
+    const ScreenState* s = (impl_->modes.synchronized_output && impl_->sync_snap_valid && (int)impl_->sync_snap.lines.size() == impl_->rows) ? &impl_->sync_snap : impl_->scr;
+    return s->lines[(size_t)y];
 }
 int64_t Terminal::history_base() const { return impl_->history_base; }
 int64_t Terminal::history_count() const { return (int64_t)impl_->history.size(); }
@@ -1257,9 +1366,10 @@ const Hyperlink* Terminal::hyperlink(uint32_t id) const {
 }
 
 Cursor Terminal::cursor() const {
+    const ScreenState* s = (impl_->modes.synchronized_output && impl_->sync_snap_valid && (int)impl_->sync_snap.lines.size() == impl_->rows) ? &impl_->sync_snap : impl_->scr;
     Cursor c = impl_->cursor_meta;
-    c.x = impl_->scr->x;
-    c.y = impl_->scr->y;
+    c.x = s->x;
+    c.y = s->y;
     c.visible = impl_->modes.cursor_visible;
     return c;
 }
@@ -1318,6 +1428,11 @@ void Terminal::set_scrollback_max(int lines) {
 }
 void Terminal::notify_focus(bool focused) {
     if (impl_->modes.focus_events) impl_->write(focused ? "\x1b[I" : "\x1b[O");
+}
+void Terminal::end_synchronized_output() {
+    if (impl_->modes.synchronized_output) {
+        impl_->set_dec_mode(2026, false);
+    }
 }
 
 void Terminal::set_cell_pixel_size(int w, int h) { impl_->cell_w = std::max(1, w); impl_->cell_h = std::max(1, h); }

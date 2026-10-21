@@ -10,13 +10,16 @@ less, ssh, mc, and anything curses-based must behave exactly as in xterm/kitty.
 
 ### Activity tree
 An *activity* is a node in a tree. It has a name, notes, a working directory,
-a (possibly live) shell session, and an ordered list of *blocks*. Children
-inherit cwd and environment from their parent at creation time. Activities are
-created from the UI (Ctrl+Shift+N child, Ctrl+Shift+T sibling), from the shell
-(`canopy new "fix tests"`), or by *forking* a block ("open this command in a
-child activity"). The tree is persisted under `~/.local/share/canopy/` so that
-closing Canopy and reopening it shows the same tree, with history, and a fresh
-shell starts in an activity when you focus it ("resume").
+a (possibly live) shell session, its own persistent shell history file
+(`~/.local/share/canopy/history/activity-<id>.history`), and an ordered list of
+*blocks*. Children inherit cwd, environment, and command history from their parent
+at creation time. Activities are created from the UI (Ctrl+Shift+N child,
+Ctrl+Shift+T sibling), from the shell (`canopy new "fix tests"`), or by *forking*
+a block ("open this command in a child activity"), and closed via the `×` button
+on any pane title bar, sidebar card, peek rail card, or switcher card (or
+Ctrl+Shift+W / `canopy close`). The tree is persisted under `~/.local/share/canopy/`
+so that closing Canopy and reopening it shows the same tree, with block and
+command history, and a fresh shell starts in an activity when you focus it ("resume").
 
 ### Blocks
 A *block* is one prompt + command + output + exit status. Block boundaries come
