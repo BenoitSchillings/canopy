@@ -398,6 +398,70 @@ static void test_remove_one_and_history() {
     if (dir.rfind("/tmp/canopy_act_", 0) == 0) (void)!system(cmd.c_str());
 }
 
+static void test_agy_artifacts() {
+    std::string dir = tmpdir();
+    std::string agy_dir = dir + "/agy";
+    std::string brain_c1 = agy_dir + "/brain/conv-1111/scratch";
+    std::string brain_c2 = agy_dir + "/brain/conv-2222";
+    std::string mkdir_cmd = "mkdir -p '" + brain_c1 + "' '" + brain_c2 + "'";
+    (void)!system(mkdir_cmd.c_str());
+
+    // Write history.jsonl mapping workspaces to conversations
+    {
+        std::ofstream f(agy_dir + "/history.jsonl");
+        f << R"({"display":"first","timestamp":100,"workspace":"/home/u/proj","conversationId":"conv-old"})" << "\n";
+        f << R"({"display":"second","timestamp":200,"workspace":"/home/u/proj","conversationId":"conv-1111"})" << "\n";
+        f << R"({"display":"other","timestamp":300,"workspace":"/home/u/other","conversationId":"conv-2222"})" << "\n";
+    }
+
+    // Exact match and subdirectory match
+    CHECK(agy_find_conversation("/home/u/proj", agy_dir) == "conv-1111");
+    CHECK(agy_find_conversation("/home/u/proj/src/ui", agy_dir) == "conv-1111");
+    CHECK(agy_find_conversation("/home/u/other", agy_dir) == "conv-2222");
+    CHECK(agy_find_conversation("/var/nowhere", agy_dir).empty());
+
+    // Create artifacts and metadata in conv-1111
+    std::string plan_md = agy_dir + "/brain/conv-1111/implementation_plan.md";
+    std::string walk_md = agy_dir + "/brain/conv-1111/walkthrough.md";
+    {
+        std::ofstream(plan_md) << "# Plan\n- [ ] Step 1\n";
+        std::ofstream(plan_md + ".metadata.json")
+            << R"({"summary":"Detailed plan summary","userFacing":true,"requestFeedback":true})";
+        std::ofstream(walk_md) << "# Walkthrough\nDone!\n";
+        std::ofstream(walk_md + ".metadata.json")
+            << R"({"summary":"Walkthrough summary","userFacing":true,"requestFeedback":false})";
+    }
+
+    auto insp = agy_inspect_artifact(plan_md, "conv-1111");
+    CHECK(insp.has_value());
+    if (insp) {
+        CHECK(insp->name == "implementation_plan.md");
+        CHECK(insp->conv_id == "conv-1111");
+        CHECK(insp->summary == "Detailed plan summary");
+        CHECK(insp->user_facing);
+        CHECK(insp->request_feedback);
+    }
+
+    auto arts = agy_scan_artifacts("/home/u/proj/src", "", agy_dir);
+    CHECK(arts.size() == 2);
+    bool saw_plan = false, saw_walk = false;
+    for (const auto& a : arts) {
+        if (a.name == "implementation_plan.md") {
+            saw_plan = true;
+            CHECK(a.request_feedback);
+            CHECK(a.summary == "Detailed plan summary");
+        } else if (a.name == "walkthrough.md") {
+            saw_walk = true;
+            CHECK(!a.request_feedback);
+            CHECK(a.summary == "Walkthrough summary");
+        }
+    }
+    CHECK(saw_plan && saw_walk);
+
+    std::string cmd = "rm -rf '" + dir + "'";
+    if (dir.rfind("/tmp/canopy_act_", 0) == 0) (void)!system(cmd.c_str());
+}
+
 int main() {
     test_basic_tree();
     test_move_reorder_remove();
@@ -406,6 +470,7 @@ int main() {
     test_from_json_validation_and_repair();
     test_save_load();
     test_remove_one_and_history();
+    test_agy_artifacts();
     std::printf("test_activity: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
 }

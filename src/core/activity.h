@@ -86,4 +86,21 @@ private:
 Json block_to_json(const Block& b);
 Block block_from_json(const Json& j);
 
+struct AgyArtifact {
+    std::string name;               // basename, e.g. "walkthrough.md" or "plan.md"
+    std::string path;               // absolute path to the .md file
+    std::string conv_id;            // AGY conversation UUID (if in brain/<uuid>)
+    std::string summary;            // from <name>.metadata.json "summary"
+    int64_t mtime = 0;              // file modification time (unix seconds)
+    bool user_facing = true;        // from <name>.metadata.json "userFacing"
+    bool request_feedback = false;  // from <name>.metadata.json "requestFeedback" or plan filename
+};
+
+// Discover the most recent AGY conversation ID for a workspace directory from ~/.gemini/antigravity-cli/history.jsonl.
+std::string agy_find_conversation(const std::string& cwd, const std::string& agy_dir = "");
+// Inspect a single Markdown artifact file (and optional <path>.metadata.json).
+std::optional<AgyArtifact> agy_inspect_artifact(const std::string& path, const std::string& conv_id = "");
+// List AGY artifacts (.md files + metadata) for a workspace CWD and/or conversation ID, newest first.
+std::vector<AgyArtifact> agy_scan_artifacts(const std::string& cwd, const std::string& conv_id_hint = "", const std::string& agy_dir = "");
+
 } // namespace canopy

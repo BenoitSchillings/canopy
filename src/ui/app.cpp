@@ -263,9 +263,11 @@ void App::on_shell_request(uint64_t activity, const std::string& kind, const std
     else if (kind == "note") add_note(activity, payload);
     else if (kind == "name") rename_activity(activity, payload);
     else if (kind == "close") close_activity(activity);
+    else if (kind == "artifact") { if (Pane* p = pane(activity)) p->open_artifact(payload); }
 }
 
 void App::on_block_finished(uint64_t activity, const Block& b) {
+    if (Pane* p = pane(activity)) p->refresh_artifacts();
     request_redraw();
     if (!b.command.empty()) {
         request_summary(activity, false);
@@ -466,7 +468,7 @@ void App::setup_actions() {
         for (auto& kv : panes_) {
             if (kv.first == focused_) continue;
             Pane& p = *kv.second;
-            bool w = p.waiting_for_user() || p.unread;
+            bool w = p.waiting_for_user() || p.unread || p.artifact_unread();
             float sc = p.attention_score(t, focused_);
             if (w && (!found_waiting || sc > best_score)) {
                 found_waiting = true;
@@ -482,6 +484,20 @@ void App::setup_actions() {
             focus(best_id, true);
         } else {
             toast("No other terminals");
+        }
+    });
+    add("agy.artifacts", "Toggle AGY artifact / plan drawer", "Ctrl+Shift+A", [this] {
+        if (Pane* p = focused_pane()) {
+            p->toggle_drawer();
+            if (p->drawer_open()) canvas_->fly_to_pane(*p);
+        }
+    });
+    add("agy.proceed", "Approve AGY plan (send 'Proceed')", "", [this] {
+        if (Pane* p = focused_pane()) {
+            ensure_session(*p);
+            p->write("Proceed\r");
+            p->scroll_to_bottom();
+            toast("✓ Sent 'Proceed'");
         }
     });
     add("view.overview", "Toggle overview", "Ctrl+Shift+O", [this] { canvas_->toggle_overview(); });
@@ -559,6 +575,7 @@ bool App::handle_global_key(const KeyEvent& ev) {
         case 'h': case '/': case '?': run_action("view.help"); return true;
         case 'j': run_action("block.json"); return true;
         case 'u': run_action("activity.next_attention"); return true;
+        case 'a': run_action("agy.artifacts"); return true;
         case '=': case '+': run_action("view.font_bigger"); return true;
         case '-': case '_': run_action("view.font_smaller"); return true;
         default: break;

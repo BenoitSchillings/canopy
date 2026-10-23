@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <fstream>
+#include <sstream>
 #include <sys/stat.h>
 
 namespace canopy::ui {
@@ -42,11 +44,130 @@ Rect Pane::rect() const {
     return {x, y, w, h};
 }
 Rect Pane::title_rect() const { return {x, y, rect().w, TITLE_H}; }
+Rect Pane::artifact_chip_rect() const {
+    if (artifacts_.empty()) return {0, 0, 0, 0};
+    const AgyArtifact* art = active_artifact();
+    std::string stem = art ? art->name : "artifacts";
+    if (stem.size() > 3 && stem.compare(stem.size() - 3, 3, ".md") == 0) stem.resize(stem.size() - 3);
+    stem = ellipsize(stem, 15);
+    if (artifacts_.size() > 1) stem += " (" + std::to_string(artifacts_.size()) + ")";
+    float w = std::max(64.f, std::min(176.f, (float)(utf8_length(stem) + 3) * cell_w() + 10.f));
+    Rect mb = min_rect();
+    return {mb.x - w - 6.f, mb.y, w, 20.f};
+}
 Rect Pane::min_rect() const { Rect t = title_rect(); return {t.x + t.w - 52.f, t.y + (TITLE_H - 20.f) / 2.f, 20.f, 20.f}; }
 Rect Pane::close_rect() const { Rect t = title_rect(); return {t.x + t.w - 28.f, t.y + (TITLE_H - 20.f) / 2.f, 20.f, 20.f}; }
 Rect Pane::term_rect() const { return {x + GUTTER_W + PAD, y + TITLE_H + PAD, cols * cell_w(), rows * cell_h()}; }
 Rect Pane::gutter_rect() const { return {x + 2, y + TITLE_H + PAD, GUTTER_W + PAD - 2, rows * cell_h()}; }
 Rect Pane::resize_handle() const { Rect r = rect(); return {r.x + r.w - HANDLE, r.y + r.h - HANDLE, HANDLE, HANDLE}; }
+Rect Pane::drawer_rect() const {
+    Rect R = rect();
+    float w = std::max(380.f, std::min(540.f, cols * cell_w() * 0.72f));
+    float h = std::max(R.h, TITLE_H + 18 * cell_h());
+    return {R.x + R.w + 12.f, R.y, w, h};
+}
+Rect Pane::drawer_close_rect() const {
+    Rect d = drawer_rect();
+    return {d.x + d.w - 28.f, d.y + (TITLE_H - 20.f) / 2.f, 20.f, 20.f};
+}
+Rect Pane::drawer_next_rect() const {
+    if (artifacts_.size() <= 1) return {0, 0, 0, 0};
+    Rect d = drawer_rect();
+    return {d.x + d.w - 54.f, d.y + (TITLE_H - 20.f) / 2.f, 20.f, 20.f};
+}
+Rect Pane::drawer_prev_rect() const {
+    if (artifacts_.size() <= 1) return {0, 0, 0, 0};
+    Rect d = drawer_rect();
+    return {d.x + d.w - 108.f, d.y + (TITLE_H - 20.f) / 2.f, 20.f, 20.f};
+}
+Rect Pane::drawer_proceed_rect() const {
+    Rect d = drawer_rect();
+    return {d.x + 10.f, d.y + TITLE_H + 5.f, 94.f, 22.f};
+}
+Rect Pane::drawer_feedback_rect() const {
+    Rect d = drawer_rect();
+    return {d.x + 110.f, d.y + TITLE_H + 5.f, 102.f, 22.f};
+}
+Rect Pane::drawer_edit_rect() const {
+    Rect d = drawer_rect();
+    return {d.x + 218.f, d.y + TITLE_H + 5.f, 88.f, 22.f};
+}
+Rect Pane::drawer_body_rect() const {
+    Rect d = drawer_rect();
+    return {d.x + 10.f, d.y + TITLE_H + 32.f, d.w - 20.f, d.h - TITLE_H - 40.f};
+}
+
+const AgyArtifact* Pane::active_artifact() const {
+    if (artifacts_.empty() || artifact_idx_ < 0 || artifact_idx_ >= (int)artifacts_.size()) return nullptr;
+    return &artifacts_[artifact_idx_];
+}
+
+void Pane::set_drawer_open(bool open) {
+    if (open && artifacts_.empty()) update_artifacts(app_.now());
+    if (open && artifacts_.empty()) {
+        app_.toast("No AGY artifacts found for this workspace");
+        return;
+    }
+    if (drawer_open_ == open) return;
+    drawer_open_ = open;
+    if (open) {
+        artifact_unread_ = false;
+        ensure_artifact_loaded();
+    }
+    app_.canvas().layout();
+    app_.request_redraw();
+}
+
+void Pane::toggle_drawer() {
+    set_drawer_open(!drawer_open());
+}
+
+void Pane::select_artifact(int idx) {
+    if (artifacts_.empty()) return;
+    idx = std::max(0, std::min((int)artifacts_.size() - 1, idx));
+    if (artifact_idx_ != idx) {
+        artifact_idx_ = idx;
+        drawer_scroll_ = 0.f;
+        ensure_artifact_loaded();
+        app_.request_redraw();
+    }
+}
+
+void Pane::step_artifact(int delta) {
+    if (artifacts_.size() <= 1) return;
+    int n = (int)artifacts_.size();
+    select_artifact(((artifact_idx_ + delta) % n + n) % n);
+}
+
+void Pane::refresh_artifacts() {
+    update_artifacts(app_.now());
+    if (drawer_open()) ensure_artifact_loaded();
+}
+
+void Pane::open_artifact(const std::string& path) {
+    if (path.empty()) {
+        toggle_drawer();
+        return;
+    }
+    std::string p = path;
+    if (!p.empty() && p[0] == '~') p = home_dir() + p.substr(1);
+    if (!p.empty() && p[0] != '/') p = cwd() + "/" + p;
+    struct stat st;
+    if (stat(p.c_str(), &st) == 0 && !S_ISDIR(st.st_mode)) {
+        if (std::find(pinned_artifacts_.begin(), pinned_artifacts_.end(), p) == pinned_artifacts_.end()) {
+            pinned_artifacts_.push_back(p);
+        }
+    }
+    update_artifacts(app_.now());
+    for (size_t i = 0; i < artifacts_.size(); ++i) {
+        if (artifacts_[i].path == p || artifacts_[i].name == path || artifacts_[i].name == basename_of(p)) {
+            artifact_idx_ = (int)i;
+            drawer_scroll_ = 0.f;
+            break;
+        }
+    }
+    set_drawer_open(true);
+}
 
 bool Pane::cell_at(float wx, float wy, int* row, int* col) const {
     Rect t = term_rect();
@@ -109,6 +230,7 @@ bool Pane::start_session(std::string* err) {
     t.on_cwd = [this, prev_cwd](const std::string& s) {
         if (prev_cwd) prev_cwd(s);
         if (Activity* a = app_.tree().get(activity_id)) a->cwd = s;
+        last_artifact_scan_ = 0;
     };
     t.on_title = [this](const std::string& s) { last_title = s; app_.request_redraw(); };
     t.on_bell = [this] {
@@ -188,6 +310,7 @@ std::string Pane::cwd() const {
 void Pane::clear_attention() {
     unread = false;
     bell_unread_ = false;
+    artifact_unread_ = false;
     notify_msg_.clear();
 }
 
@@ -318,10 +441,253 @@ void Pane::update_agent_state(double now) {
     }
 }
 
+bool Pane::update_artifacts(double now) {
+    last_artifact_scan_ = now;
+    std::string dir = cwd();
+    auto found = agy_scan_artifacts(dir);
+    for (const std::string& p : pinned_artifacts_) {
+        bool already = false;
+        for (const auto& a : found) if (a.path == p) { already = true; break; }
+        if (!already) {
+            if (auto a = agy_inspect_artifact(p)) found.insert(found.begin(), *a);
+        }
+    }
+    if (found.empty() && artifacts_.empty()) return false;
+    int64_t newest_mtime = 0;
+    const AgyArtifact* newest_art = nullptr;
+    for (const auto& a : found) {
+        if (a.mtime > newest_mtime) { newest_mtime = a.mtime; newest_art = &a; }
+    }
+    bool first_scan = (last_artifact_mtime_ == 0);
+    bool changed = (found.size() != artifacts_.size());
+    if (!changed) {
+        for (size_t i = 0; i < found.size(); ++i) {
+            if (found[i].path != artifacts_[i].path || found[i].mtime != artifacts_[i].mtime) { changed = true; break; }
+        }
+    }
+    std::string cur_path = active_artifact() ? active_artifact()->path : std::string();
+    artifacts_ = std::move(found);
+    if (!cur_path.empty()) {
+        for (size_t i = 0; i < artifacts_.size(); ++i) {
+            if (artifacts_[i].path == cur_path) { artifact_idx_ = (int)i; break; }
+        }
+    }
+    if (artifact_idx_ >= (int)artifacts_.size()) artifact_idx_ = std::max(0, (int)artifacts_.size() - 1);
+    if (newest_mtime > last_artifact_mtime_) {
+        if (!first_scan) {
+            artifact_unread_ = true;
+            for (size_t i = 0; i < artifacts_.size(); ++i) {
+                if (artifacts_[i].mtime == newest_mtime) { artifact_idx_ = (int)i; break; }
+            }
+            if (newest_art && newest_art->request_feedback && !drawer_open_) {
+                drawer_open_ = true;
+                app_.canvas().layout();
+                const Activity* act = app_.tree().get(activity_id);
+                app_.toast("📋 " + (act ? act->name + ": " : std::string()) + "Plan ready for review (" + newest_art->name + ")", 6.f);
+            }
+        }
+        last_artifact_mtime_ = newest_mtime;
+        changed = true;
+    }
+    if (artifacts_.empty() && drawer_open_) {
+        drawer_open_ = false;
+        app_.canvas().layout();
+        changed = true;
+    }
+    if (drawer_open_) ensure_artifact_loaded();
+    return changed;
+}
+
+static std::string read_text_file(const std::string& path) {
+    std::ifstream f(path);
+    if (!f) return "";
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
+}
+
+static std::string clean_inline_md(std::string_view s) {
+    std::string out;
+    out.reserve(s.size());
+    size_t i = 0;
+    while (i < s.size()) {
+        // [label](url) -> label
+        if (s[i] == '[') {
+            size_t rb = s.find(']', i + 1);
+            if (rb != std::string_view::npos && rb + 1 < s.size() && s[rb + 1] == '(') {
+                size_t rp = s.find(')', rb + 2);
+                if (rp != std::string_view::npos) {
+                    out.append(s.substr(i + 1, rb - i - 1));
+                    i = rp + 1;
+                    continue;
+                }
+            }
+        }
+        if (i + 1 < s.size() && s[i] == '*' && s[i + 1] == '*') {
+            i += 2;
+            continue;
+        }
+        out.push_back(s[i]);
+        ++i;
+    }
+    return out;
+}
+
+void Pane::ensure_artifact_loaded() {
+    const AgyArtifact* art = active_artifact();
+    if (!art) {
+        md_lines_.clear();
+        loaded_artifact_path_.clear();
+        loaded_artifact_mtime_ = 0;
+        return;
+    }
+    int wrap_cols = std::max(24, (int)((drawer_body_rect().w - 16.f) / std::max(4.f, cell_w())));
+    if (art->path == loaded_artifact_path_ && art->mtime == loaded_artifact_mtime_ && wrap_cols == loaded_wrap_cols_) return;
+    loaded_artifact_path_ = art->path;
+    loaded_artifact_mtime_ = art->mtime;
+    loaded_wrap_cols_ = wrap_cols;
+    md_lines_.clear();
+
+    auto wrap_push = [&](MdLine::Kind kind, const std::string& raw, int indent) {
+        std::string text = (kind == MdLine::Code) ? raw : clean_inline_md(raw);
+        int max_c = std::max(14, wrap_cols - indent);
+        if (text.empty()) {
+            md_lines_.push_back({kind, "", indent});
+            return;
+        }
+        std::u32string cps = utf8_decode(text);
+        size_t pos = 0;
+        bool first = true;
+        while (pos < cps.size()) {
+            int limit = first ? max_c : std::max(12, max_c - 2);
+            int cur_ind = first ? indent : (indent + (kind == MdLine::Code ? 0 : 1));
+            if ((int)(cps.size() - pos) <= limit) {
+                std::string chunk;
+                for (size_t k = pos; k < cps.size(); ++k) utf8_append(chunk, cps[k]);
+                md_lines_.push_back({kind, std::move(chunk), cur_ind});
+                break;
+            }
+            size_t brk = pos + limit;
+            if (kind != MdLine::Code) {
+                for (size_t k = brk; k > pos + limit / 3; --k) {
+                    if (cps[k] == U' ' || cps[k] == U'\t') { brk = k; break; }
+                }
+            }
+            std::string chunk;
+            for (size_t k = pos; k < brk; ++k) utf8_append(chunk, cps[k]);
+            md_lines_.push_back({kind, std::move(chunk), cur_ind});
+            pos = brk;
+            while (pos < cps.size() && kind != MdLine::Code && cps[pos] == U' ') ++pos;
+            first = false;
+        }
+    };
+
+    if (!art->summary.empty()) {
+        size_t p = 0;
+        while (p < art->summary.size()) {
+            size_t nl = art->summary.find('\n', p);
+            std::string sl = art->summary.substr(p, nl == std::string::npos ? std::string::npos : nl - p);
+            if (!sl.empty() && sl.back() == '\r') sl.pop_back();
+            if (!sl.empty()) wrap_push(MdLine::SummaryMeta, sl, 1);
+            if (nl == std::string::npos) break;
+            p = nl + 1;
+        }
+        if (!md_lines_.empty()) md_lines_.push_back({MdLine::Normal, "", 0});
+    }
+
+    std::string content = read_text_file(art->path);
+    bool in_code = false;
+    MdLine::Kind quote_kind = MdLine::Quote;
+    size_t pos = 0;
+    while (pos <= content.size()) {
+        size_t nl = content.find('\n', pos);
+        std::string line = content.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        size_t first_ns = line.find_first_not_of(" \t");
+        std::string trimmed = (first_ns == std::string::npos) ? std::string() : line.substr(first_ns);
+
+        if (trimmed.compare(0, 3, "```") == 0) {
+            in_code = !in_code;
+            if (nl == std::string::npos) break;
+            pos = nl + 1;
+            continue;
+        }
+        if (in_code) {
+            wrap_push(MdLine::Code, line, 1);
+            if (nl == std::string::npos) break;
+            pos = nl + 1;
+            continue;
+        }
+        if (trimmed.empty()) {
+            quote_kind = MdLine::Quote;
+            if (!md_lines_.empty() && (!md_lines_.back().text.empty() || md_lines_.back().kind != MdLine::Normal)) {
+                md_lines_.push_back({MdLine::Normal, "", 0});
+            }
+            if (nl == std::string::npos) break;
+            pos = nl + 1;
+            continue;
+        }
+        if (trimmed == "---" || trimmed == "***" || trimmed == "___") {
+            md_lines_.push_back({MdLine::Rule, "", 0});
+            if (nl == std::string::npos) break;
+            pos = nl + 1;
+            continue;
+        }
+        if (trimmed.compare(0, 2, "# ") == 0) {
+            wrap_push(MdLine::H1, trimmed.substr(2), 0);
+        } else if (trimmed.compare(0, 3, "## ") == 0) {
+            wrap_push(MdLine::H2, trimmed.substr(3), 0);
+        } else if (trimmed.compare(0, 4, "### ") == 0) {
+            wrap_push(MdLine::H3, trimmed.substr(4), 0);
+        } else if (trimmed.compare(0, 5, "#### ") == 0) {
+            wrap_push(MdLine::H3, trimmed.substr(5), 0);
+        } else if (trimmed[0] == '>') {
+            std::string q = trimmed.substr(1);
+            if (!q.empty() && q[0] == ' ') q.erase(0, 1);
+            auto check_alert = [&](const char* tag, MdLine::Kind k, const char* label) {
+                size_t tl = std::strlen(tag);
+                if (q.compare(0, tl, tag) == 0) {
+                    quote_kind = k;
+                    std::string rest = q.substr(tl);
+                    size_t f = rest.find_first_not_of(" \t");
+                    rest = (f == std::string::npos) ? std::string() : rest.substr(f);
+                    wrap_push(k, rest.empty() ? std::string(label) : (std::string(label) + ": " + rest), 1);
+                    return true;
+                }
+                return false;
+            };
+            if (!check_alert("[!NOTE]", MdLine::AlertNote, "ℹ Note") &&
+                !check_alert("[!TIP]", MdLine::AlertTip, "💡 Tip") &&
+                !check_alert("[!IMPORTANT]", MdLine::AlertImportant, "⚑ Important") &&
+                !check_alert("[!WARNING]", MdLine::AlertWarning, "⚠ Warning") &&
+                !check_alert("[!CAUTION]", MdLine::AlertCaution, "⛔ Caution")) {
+                wrap_push(quote_kind, q, 1);
+            }
+        } else {
+            int ind = std::min(6, (int)(first_ns == std::string::npos ? 0 : first_ns / 2));
+            if (trimmed.compare(0, 6, "- [ ] ") == 0 || trimmed.compare(0, 6, "* [ ] ") == 0) {
+                wrap_push(MdLine::Normal, "☐ " + trimmed.substr(6), ind + 1);
+            } else if (trimmed.compare(0, 6, "- [x] ") == 0 || trimmed.compare(0, 6, "- [X] ") == 0 || trimmed.compare(0, 6, "* [x] ") == 0) {
+                wrap_push(MdLine::Normal, "☑ " + trimmed.substr(6), ind + 1);
+            } else if (trimmed.compare(0, 2, "- ") == 0 || trimmed.compare(0, 2, "* ") == 0) {
+                wrap_push(MdLine::Normal, "• " + trimmed.substr(2), ind + 1);
+            } else {
+                wrap_push(MdLine::Normal, trimmed, ind);
+            }
+        }
+        if (nl == std::string::npos) break;
+        pos = nl + 1;
+    }
+}
+
 // ---------------------------------------------------------------- update
 bool Pane::update(double now) {
-    if (!session) return false;
-    bool changed = session->pump();
+    bool changed = false;
+    if (last_artifact_scan_ == 0 || now - last_artifact_scan_ >= 1.5) {
+        if (update_artifacts(now)) changed = true;
+    }
+    if (!session) return changed;
+    if (session->pump()) changed = true;
     Terminal& t = session->term();
     if (t.modes().synchronized_output) {
         if (sync_start_ == 0) sync_start_ = now;
@@ -895,6 +1261,60 @@ void Pane::send_mouse(const MouseEvent& ev) {
 
 void Pane::mouse_down(float wx, float wy, MouseButton b, int clicks, uint32_t mods) {
     set_hover(wx, wy);
+    if (drawer_open() && !minimized() && drawer_rect().contains(wx, wy)) {
+        if (b == MouseButton::Left) {
+            if (hover.drawer_close) { set_drawer_open(false); return; }
+            if (hover.drawer_prev) { step_artifact(-1); return; }
+            if (hover.drawer_next) { step_artifact(1); return; }
+            if (hover.drawer_proceed) {
+                artifact_unread_ = false;
+                app_.ensure_session(*this);
+                write("Proceed\r");
+                scroll_to_bottom();
+                const Activity* act = app_.tree().get(activity_id);
+                app_.toast("✓ Sent 'Proceed' to " + (act ? act->name : std::string("terminal")));
+                app_.request_redraw();
+                return;
+            }
+            if (hover.drawer_feedback) {
+                const AgyArtifact* art = active_artifact();
+                std::string label = art ? ("Feedback on " + art->name) : "Feedback for agent";
+                app_.prompt_text(label, "", [this](const std::string& fb) {
+                    if (!fb.empty()) {
+                        artifact_unread_ = false;
+                        app_.ensure_session(*this);
+                        write(fb + "\r");
+                        scroll_to_bottom();
+                    }
+                });
+                return;
+            }
+            if (hover.drawer_edit) {
+                if (const AgyArtifact* art = active_artifact()) {
+                    app_.open_path(art->path, 0, cwd(), activity_id);
+                }
+                return;
+            }
+        } else if (b == MouseButton::Right) {
+            std::vector<MenuItem> items;
+            for (size_t i = 0; i < artifacts_.size(); ++i) {
+                int idx = (int)i;
+                std::string prefix = (idx == artifact_idx_) ? "● " : "  ";
+                items.push_back({prefix + artifacts_[i].name, [this, idx] { select_artifact(idx); }});
+            }
+            if (!items.empty()) items.push_back({"-", nullptr});
+            if (const AgyArtifact* art = active_artifact()) {
+                std::string path = art->path;
+                items.push_back({"Open in editor", [this, path] { app_.open_path(path, 0, cwd(), activity_id); }});
+                items.push_back({"Copy file path", [this, path] { app_.set_clipboard(path); app_.toast("Copied artifact path"); }});
+                items.push_back({"Copy markdown content", [this, path] { app_.set_clipboard(read_text_file(path)); app_.toast("Copied markdown content"); }});
+            }
+            items.push_back({"Close artifact drawer", [this] { set_drawer_open(false); }});
+            float sx = app_.canvas().to_screen_x(wx), sy = app_.canvas().to_screen_y(wy);
+            app_.show_menu(sx, sy, std::move(items));
+        }
+        return;
+    }
     int row, c;
     bool in_cells = cell_at(wx, wy, &row, &c);
     vis();
@@ -1079,6 +1499,15 @@ void Pane::mouse_move(float wx, float wy, uint32_t mods, MouseButton held) {
 }
 
 void Pane::wheel(float wx, float wy, float dx, float dy, uint32_t mods) {
+    if (drawer_open() && !minimized() && drawer_rect().contains(wx, wy)) {
+        ensure_artifact_loaded();
+        float line_h = cell_h() + 2.f;
+        float total_h = (float)md_lines_.size() * line_h + 12.f;
+        float max_scroll = std::max(0.f, total_h - drawer_body_rect().h);
+        drawer_scroll_ = clampf(drawer_scroll_ - dy * 3.f * line_h, 0.f, max_scroll);
+        app_.request_redraw();
+        return;
+    }
     if (session && session->term().modes().mouse != MouseMode::None && live() && !(mods & MOD_SHIFT)) {
         int row, c;
         if (!cell_at(wx, wy, &row, &c)) return;
@@ -1139,12 +1568,24 @@ void Pane::paste(const std::string& text) {
 // ---------------------------------------------------------------- hover
 void Pane::set_hover(float wx, float wy) {
     hover = {};
+    if (drawer_open() && !minimized() && drawer_rect().contains(wx, wy)) {
+        hover.valid = true;
+        hover.drawer = true;
+        hover.drawer_close = drawer_close_rect().contains(wx, wy);
+        hover.drawer_prev = drawer_prev_rect().contains(wx, wy);
+        hover.drawer_next = drawer_next_rect().contains(wx, wy);
+        hover.drawer_proceed = drawer_proceed_rect().contains(wx, wy);
+        hover.drawer_feedback = drawer_feedback_rect().contains(wx, wy);
+        hover.drawer_edit = drawer_edit_rect().contains(wx, wy);
+        return;
+    }
     Rect R = rect();
     if (!R.contains(wx, wy)) return;
     hover.valid = true;
     if (!minimized() && resize_handle().contains(wx, wy)) { hover.handle = true; return; }
     if (title_rect().contains(wx, wy)) {
         hover.title = true;
+        hover.artifact_chip = artifact_chip_rect().contains(wx, wy);
         hover.min_btn = min_rect().contains(wx, wy);
         hover.close_btn = close_rect().contains(wx, wy);
         return;
@@ -1193,8 +1634,9 @@ void Pane::set_hover(float wx, float wy) {
 
 int Pane::system_cursor() const {
     if (hover.handle) return SDL_SYSTEM_CURSOR_SIZENWSE;
-    if (hover.min_btn || hover.close_btn || hover.scroll_pill) return SDL_SYSTEM_CURSOR_HAND;
-    if (hover.title) return SDL_SYSTEM_CURSOR_ARROW;
+    if (hover.artifact_chip || hover.min_btn || hover.close_btn || hover.scroll_pill) return SDL_SYSTEM_CURSOR_HAND;
+    if (hover.drawer_close || hover.drawer_prev || hover.drawer_next || hover.drawer_proceed || hover.drawer_feedback || hover.drawer_edit) return SDL_SYSTEM_CURSOR_HAND;
+    if (hover.drawer || hover.title) return SDL_SYSTEM_CURSOR_ARROW;
     if (minimized() && hover.valid) return SDL_SYSTEM_CURSOR_HAND;
     if (hover.gutter || hover.summary || hover.chip || hover.header) return SDL_SYSTEM_CURSOR_HAND;
     if (hover.link || hover.span) return SDL_SYSTEM_CURSOR_HAND;
@@ -1306,6 +1748,9 @@ void Pane::draw(Renderer& r, Font& font, const DrawCtx& ctx) {
         r.line(h.x + h.w - 3, h.y + h.h - 9, h.x + h.w - 9, h.y + h.h - 3, hc, 1.f);
         r.line(h.x + h.w - 3, h.y + h.h - 5, h.x + h.w - 5, h.y + h.h - 3, hc, 1.f);
     }
+    if (drawer_open() && !minimized() && !ctx.in_rail) {
+        draw_artifact_drawer(r, font, ctx);
+    }
 }
 
 void Pane::draw_title(Renderer& r, Font& font, const DrawCtx& ctx) {
@@ -1343,7 +1788,28 @@ void Pane::draw_title(Renderer& r, Font& font, const DrawCtx& ctx) {
     if (!last_title.empty() && last_title != name && last_title.find(sub) == std::string::npos) sub += "  ·  " + ellipsize(last_title, 40);
     Rect cb = close_rect();
     Rect mb = min_rect();
+    Rect ac = artifact_chip_rect();
     if (!ctx.in_rail) {
+        if (!artifacts_.empty()) {
+            const AgyArtifact* art = active_artifact();
+            std::string stem = art ? art->name : "artifacts";
+            if (stem.size() > 3 && stem.compare(stem.size() - 3, 3, ".md") == 0) stem.resize(stem.size() - 3);
+            stem = ellipsize(stem, 15);
+            std::string label = (art && art->request_feedback ? "📋 " : "📄 ") + stem;
+            if (artifacts_.size() > 1) label += " (" + std::to_string(artifacts_.size()) + ")";
+            bool hot_ac = hover.artifact_chip || drawer_open();
+            bool need_rev = art && art->request_feedback && artifact_unread_;
+            RGBA ac_c = need_rev ? col(th.warning) : col(th.accent);
+            r.rounded_rect(ac, 5.f, alpha(ac_c, hot_ac ? 0.35f : (artifact_unread_ ? 0.25f : 0.14f)));
+            r.rounded_rect_stroke(ac, 5.f, alpha(ac_c, hot_ac || artifact_unread_ ? 0.85f : 0.45f), 1.f);
+            float lw = r.measure_text(font, label, (drawer_open() || artifact_unread_) ? gfx::STYLE_BOLD : gfx::STYLE_REGULAR);
+            r.push_clip(ac);
+            r.draw_text(font, ac.x + std::max(4.f, (ac.w - lw) / 2.f), base, label,
+                        need_rev ? col(th.warning) : (hot_ac ? col(th.foreground) : ac_c),
+                        (drawer_open() || artifact_unread_) ? gfx::STYLE_BOLD : gfx::STYLE_REGULAR);
+            r.pop_clip();
+        }
+
         bool hot_min = hover.min_btn;
         RGBA mbg = hot_min ? alpha(col(th.accent), 0.65f) : alpha(fg, ctx.focused ? 0.14f : 0.08f);
         RGBA mfg = hot_min ? col(th.foreground) : alpha(fg, ctx.focused ? 0.85f : 0.55f);
@@ -1360,7 +1826,7 @@ void Pane::draw_title(Renderer& r, Font& font, const DrawCtx& ctx) {
         float xw = r.measure_text(font, xstr, gfx::STYLE_BOLD);
         r.draw_text(font, cb.x + (cb.w - xw) / 2.f, base, xstr, cfg_, gfx::STYLE_BOLD);
     }
-    float right = ctx.in_rail ? (t.x + t.w - 12) : (mb.x - 8);
+    float right = ctx.in_rail ? (t.x + t.w - 12) : ((artifacts_.empty() ? mb.x : ac.x) - 8);
     float avail = right - x - 90;
     if (avail > 40) {
         r.push_clip({x, t.y, avail, TITLE_H});
@@ -1741,6 +2207,154 @@ void Pane::draw_dormant(Renderer& r, Font& font, const DrawCtx& ctx) {
     r.draw_text(font, box.x + 12, box.y + 6 + font.metrics().ascent, msg, col(th.chrome_fg));
 }
 
+void Pane::draw_artifact_drawer(Renderer& r, Font& font, const DrawCtx& ctx) {
+    const AgyArtifact* art = active_artifact();
+    if (!art) return;
+    ensure_artifact_loaded();
+    const Theme& th = app_.theme();
+    Rect R = rect();
+    Rect D = drawer_rect();
+    RGBA bg = col(th.background);
+    RGBA chrome = col(th.chrome_bg);
+    RGBA fg = col(th.chrome_fg);
+    float asc = font.metrics().ascent;
+
+    // Subtle connector bridge between terminal card and artifact drawer
+    float cy = R.y + TITLE_H / 2.f;
+    r.line(R.x + R.w, cy, D.x, cy, alpha(col(th.accent), 0.65f), 2.f);
+
+    // Shadow & card background
+    r.rounded_rect({D.x + 2, D.y + 4, D.w, D.h}, RADIUS, {0, 0, 0, 0.35f});
+    r.rounded_rect(D, RADIUS, chrome);
+    Rect body_card = {D.x, D.y + TITLE_H + 30.f, D.w, D.h - TITLE_H - 30.f};
+    r.rounded_rect(body_card, RADIUS, bg);
+    r.fill_rect({body_card.x, body_card.y, body_card.w, RADIUS}, bg);
+    r.fill_rect({D.x, D.y + TITLE_H, D.w, 1.f}, alpha(fg, 0.15f));
+    r.fill_rect({D.x, D.y + TITLE_H + 30.f, D.w, 1.f}, alpha(fg, 0.18f));
+
+    // Title bar
+    float tbase = D.y + TITLE_H / 2.f + asc / 2.f - 1.f;
+    std::string title = (art->request_feedback ? "📋 " : "📄 ") + art->name;
+    float right_ctrl = drawer_close_rect().x - 8.f;
+    if (artifacts_.size() > 1) {
+        Rect pv = drawer_prev_rect();
+        Rect nx = drawer_next_rect();
+        right_ctrl = pv.x - 8.f;
+        r.rounded_rect(pv, 4.f, alpha(hover.drawer_prev ? col(th.accent) : fg, hover.drawer_prev ? 0.5f : 0.12f));
+        float pvw = r.measure_text(font, "◀");
+        r.draw_text(font, pv.x + (pv.w - pvw) / 2.f, tbase, "◀", col(th.foreground));
+
+        std::string cnt = std::to_string(artifact_idx_ + 1) + "/" + std::to_string(artifacts_.size());
+        float cntw = r.measure_text(font, cnt);
+        r.draw_text(font, pv.x + pv.w + (nx.x - (pv.x + pv.w) - cntw) / 2.f, tbase, cnt, alpha(fg, 0.85f));
+
+        r.rounded_rect(nx, 4.f, alpha(hover.drawer_next ? col(th.accent) : fg, hover.drawer_next ? 0.5f : 0.12f));
+        float nxw = r.measure_text(font, "▶");
+        r.draw_text(font, nx.x + (nx.w - nxw) / 2.f, tbase, "▶", col(th.foreground));
+    }
+    Rect cl = drawer_close_rect();
+    r.rounded_rect(cl, 5.f, hover.drawer_close ? alpha(col(th.error), 0.85f) : alpha(fg, 0.12f));
+    float xw = r.measure_text(font, "×", gfx::STYLE_BOLD);
+    r.draw_text(font, cl.x + (cl.w - xw) / 2.f, tbase, "×", col(th.foreground), gfx::STYLE_BOLD);
+
+    r.push_clip({D.x + 12.f, D.y, std::max(20.f, right_ctrl - (D.x + 12.f)), TITLE_H});
+    float tx = D.x + 12.f + r.draw_text(font, D.x + 12.f, tbase, title, col(th.foreground), gfx::STYLE_BOLD) + 8.f;
+    if (art->request_feedback) {
+        r.draw_text(font, tx, tbase, "· Review Plan", col(th.warning), gfx::STYLE_BOLD);
+    } else {
+        r.draw_text(font, tx, tbase, "· AGY Artifact", alpha(fg, 0.65f));
+    }
+    r.pop_clip();
+
+    // Action bar (Proceed / Feedback / Edit)
+    auto draw_btn = [&](const Rect& br, const std::string& lbl, RGBA accent_c, bool hot, bool primary) {
+        r.rounded_rect(br, 5.f, alpha(accent_c, hot ? 0.42f : (primary ? 0.24f : 0.12f)));
+        r.rounded_rect_stroke(br, 5.f, alpha(accent_c, hot || primary ? 0.8f : 0.35f), 1.f);
+        float lw = r.measure_text(font, lbl, primary ? gfx::STYLE_BOLD : gfx::STYLE_REGULAR);
+        float by = br.y + br.h / 2.f + asc / 2.f - 1.f;
+        r.draw_text(font, br.x + (br.w - lw) / 2.f, by, lbl, hot || primary ? col(th.foreground) : accent_c, primary ? gfx::STYLE_BOLD : gfx::STYLE_REGULAR);
+    };
+    draw_btn(drawer_proceed_rect(), "✓ Proceed", col(th.ok), hover.drawer_proceed, art->request_feedback);
+    draw_btn(drawer_feedback_rect(), "✎ Feedback", col(th.accent), hover.drawer_feedback, false);
+    draw_btn(drawer_edit_rect(), "↗ Editor", fg, hover.drawer_edit, false);
+
+    // Body content
+    Rect B = drawer_body_rect();
+    float line_h = cell_h() + 2.f;
+    float total_h = (float)md_lines_.size() * line_h + 12.f;
+    float max_scroll = std::max(0.f, total_h - B.h);
+    drawer_scroll_ = clampf(drawer_scroll_, 0.f, max_scroll);
+
+    r.push_clip(B);
+    int first = std::max(0, (int)(drawer_scroll_ / line_h));
+    int last = std::min((int)md_lines_.size(), first + (int)(B.h / line_h) + 3);
+    for (int i = first; i < last; ++i) {
+        const MdLine& ml = md_lines_[i];
+        float y0 = B.y + i * line_h - drawer_scroll_;
+        float base = y0 + asc;
+        float x0 = B.x + 6.f + ml.indent * cell_w();
+
+        switch (ml.kind) {
+        case MdLine::SummaryMeta:
+            r.fill_rect({B.x + 2.f, y0, B.w - 8.f, line_h}, alpha(col(th.accent), 0.10f));
+            r.fill_rect({B.x + 2.f, y0, 3.f, line_h}, col(th.accent));
+            r.draw_text(font, x0 + 4.f, base, ml.text, alpha(col(th.foreground), 0.9f), gfx::STYLE_ITALIC);
+            break;
+        case MdLine::H1:
+            r.draw_text(font, x0, base, ml.text, col(th.accent), gfx::STYLE_BOLD);
+            r.fill_rect({B.x + 4.f, y0 + line_h - 1.f, B.w - 12.f, 1.f}, alpha(col(th.accent), 0.4f));
+            break;
+        case MdLine::H2:
+            r.draw_text(font, x0, base, ml.text, col(th.accent), gfx::STYLE_BOLD);
+            break;
+        case MdLine::H3:
+            r.draw_text(font, x0, base, ml.text, col(th.foreground), gfx::STYLE_BOLD);
+            break;
+        case MdLine::Code:
+            r.fill_rect({B.x + 4.f, y0, B.w - 12.f, line_h}, alpha(chrome, 0.75f));
+            r.fill_rect({B.x + 4.f, y0, 2.f, line_h}, alpha(col(th.ansi[6]), 0.6f));
+            r.draw_text(font, x0 + 2.f, base, ml.text, col(th.ansi[6]));
+            break;
+        case MdLine::Quote:
+            r.fill_rect({B.x + 4.f, y0, 3.f, line_h}, alpha(fg, 0.45f));
+            r.draw_text(font, x0 + 4.f, base, ml.text, alpha(col(th.foreground), 0.78f), gfx::STYLE_ITALIC);
+            break;
+        case MdLine::AlertNote:
+        case MdLine::AlertTip:
+        case MdLine::AlertImportant:
+        case MdLine::AlertWarning:
+        case MdLine::AlertCaution: {
+            RGBA ac = col(th.accent);
+            if (ml.kind == MdLine::AlertTip) ac = col(th.ok);
+            else if (ml.kind == MdLine::AlertImportant || ml.kind == MdLine::AlertWarning) ac = col(th.warning);
+            else if (ml.kind == MdLine::AlertCaution) ac = col(th.error);
+            r.fill_rect({B.x + 4.f, y0, B.w - 12.f, line_h}, alpha(ac, 0.11f));
+            r.fill_rect({B.x + 4.f, y0, 3.f, line_h}, ac);
+            r.draw_text(font, x0 + 4.f, base, ml.text, col(th.foreground));
+            break;
+        }
+        case MdLine::Rule:
+            r.fill_rect({B.x + 4.f, y0 + line_h / 2.f, B.w - 12.f, 1.f}, alpha(fg, 0.25f));
+            break;
+        case MdLine::Normal:
+        default:
+            r.draw_text(font, x0, base, ml.text, col(th.foreground));
+            break;
+        }
+    }
+    r.pop_clip();
+
+    if (total_h > B.h) {
+        float frac = B.h / total_h;
+        float sh = std::max(16.f, B.h * frac);
+        float sy = B.y + (B.h - sh) * (drawer_scroll_ / std::max(1.f, max_scroll));
+        r.rounded_rect({D.x + D.w - 6.f, sy, 3.f, sh}, 1.5f, alpha(fg, 0.4f));
+    }
+
+    RGBA border = (ctx.focused || art->request_feedback) ? alpha(col(art->request_feedback ? th.warning : th.accent), 0.85f) : alpha(fg, 0.35f);
+    r.rounded_rect_stroke(D, RADIUS, border, ctx.focused ? 1.5f : 1.f);
+}
+
 } // namespace canopy::ui
 
 
@@ -1860,6 +2474,8 @@ float Pane::attention_score(double now, uint64_t focused) const {
     if (activity_id == focused) s -= 1000;              // the current one: last in "find another" lists
     if (agent_state_ == AgentState::NeedsApproval) s += 95;
     else if (agent_state_ == AgentState::WaitingInput) s += 75;
+    if (artifact_unread_ && active_artifact() && active_artifact()->request_feedback) s += 85;
+    else if (artifact_unread_) s += 40;
     if (bell_unread_) s += 65;
     if (unread) s += 50;
     if (session && session->alive()) {
@@ -1887,6 +2503,10 @@ std::vector<std::string> Pane::attention_badges(double now) const {
     } else if (session) b.push_back("exited");
     else b.push_back("dormant");
     if (unread && !waiting_for_user()) b.push_back("● new output");
+    if (const AgyArtifact* art = active_artifact()) {
+        if (art->request_feedback && artifact_unread_) b.push_back("📋 plan review");
+        else b.push_back("📄 " + ellipsize(art->name, 16));
+    }
     return b;
 }
 

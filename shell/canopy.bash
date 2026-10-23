@@ -28,16 +28,22 @@ canopy() {
         name)    __canopy_osc "7770;name;$(__canopy_b64 "$*")" ;;
         mark)    __canopy_osc "7770;mark;$(__canopy_b64 "${*:-mark}")" ;;
         close)   __canopy_osc "7770;close;" ;;
+        artifact)
+            local p="${*:-}"
+            [[ -n "$p" && "$p" != /* && "$p" != ~* ]] && p="$PWD/$p"
+            __canopy_osc "7770;artifact;$(__canopy_b64 "$p")"
+            ;;
         history) builtin history -a 2>/dev/null || true; [[ -f "${HISTFILE:-}" ]] && cat "$HISTFILE" ;;
         id)      echo "${CANOPY_ACTIVITY:-?}" ;;
         *) cat <<'USAGE'
-canopy new [name]   create a child activity (new shell here) under the current one
-canopy close        close the current terminal activity
-canopy note <text>  append a note to the current activity
-canopy name <name>  rename the current activity
-canopy mark [label] bookmark this spot in the output
-canopy history      print this terminal's persistent command history
-canopy id           print the current activity id
+canopy new [name]      create a child activity (new shell here) under the current one
+canopy close           close the current terminal activity
+canopy artifact <path> open or toggle a markdown artifact in this pane's AGY drawer
+canopy note <text>     append a note to the current activity
+canopy name <name>     rename the current activity
+canopy mark [label]    bookmark this spot in the output
+canopy history         print this terminal's persistent command history
+canopy id              print the current activity id
 USAGE
         ;;
     esac

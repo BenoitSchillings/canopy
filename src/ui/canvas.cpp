@@ -19,6 +19,14 @@ void Canvas::animate_to(float s, float x, float y, bool instant) {
 
 void Canvas::fly_to_pane(Pane& p, bool instant) {
     Rect R = p.rect();
+    if (p.drawer_open() && !p.minimized()) {
+        Rect D = p.drawer_rect();
+        float full_w = (D.x + D.w) - R.x;
+        if ((viewport.w - 48.f) / full_w >= 0.72f) {
+            R.w = full_w;
+            R.h = std::max(R.h, D.h);
+        }
+    }
     float margin = 24.f;
     float fit = std::min((viewport.w - 2 * margin) / R.w, (viewport.h - 2 * margin) / R.h);
     float s = std::min(1.f, fit);
@@ -110,7 +118,8 @@ float Canvas::layout_subtree(uint64_t id, float x, float y) {
         if (first_layout_ || (p->x == 0 && p->y == 0 && a->x == 0 && a->y == 0)) { p->x = x; p->y = y; }
         a->x = x; a->y = y;
     } else { a->x = p->x; a->y = p->y; x = p->x; y = p->y; }
-    float child_x = a->x + p->width() + GAP_X;
+    float pane_w = p->width() + (p->drawer_open() && !p->minimized() ? p->drawer_rect().w + 14.f : 0.f);
+    float child_x = a->x + pane_w + GAP_X;
     float cy = a->y, total = 0; int n = 0;
     if (!a->collapsed) {
         for (uint64_t c : a->children) {
@@ -120,7 +129,8 @@ float Canvas::layout_subtree(uint64_t id, float x, float y) {
         }
     }
     if (n) total -= GAP_Y;
-    return std::max(p->height(), total);
+    float pane_h = (p->drawer_open() && !p->minimized()) ? std::max(p->height(), p->drawer_rect().h) : p->height();
+    return std::max(pane_h, total);
 }
 
 void Canvas::layout() {
@@ -188,7 +198,7 @@ void Canvas::draw_connectors() {
         Activity* pa = app_.tree().get(a->parent);
         if (pa && pa->collapsed) continue;
         Pane& c = *kv.second;
-        float x0 = parent->x + parent->width(), y0 = parent->y + Pane::TITLE_H / 2;
+        float x0 = parent->x + parent->width() + (parent->drawer_open() && !parent->minimized() ? parent->drawer_rect().w + 12.f : 0.f), y0 = parent->y + Pane::TITLE_H / 2;
         float x1 = c.x, y1 = c.y + Pane::TITLE_H / 2;
         bool hot = kv.first == foc || a->parent == foc;
         RGBA cc = alpha(col(th.accent), hot ? 0.75f : 0.0f);
@@ -227,7 +237,9 @@ void Canvas::draw(const DrawCtx& base) {
         for (uint64_t anc = a ? a->parent : 0; anc; ) { Activity* an = app_.tree().get(anc); if (!an) break; if (an->collapsed) { hidden = true; break; } anc = an->parent; }
         if (hidden) continue;
         Rect R = p->rect();
-        if (R.x + R.w + 8 < wx0 || R.x > wx1 || R.y + R.h + 8 < wy0 || R.y > wy1) continue;
+        float rw = R.w + (p->drawer_open() && !p->minimized() ? p->drawer_rect().w + 20.f : 0.f);
+        float rh = (p->drawer_open() && !p->minimized()) ? std::max(R.h, p->drawer_rect().h) : R.h;
+        if (R.x + rw + 8 < wx0 || R.x > wx1 || R.y + rh + 8 < wy0 || R.y > wy1) continue;
         DrawCtx ctx = base;
         ctx.focused = (id == app_.focused_id());
         ctx.scale = scale;
@@ -256,6 +268,7 @@ Pane* Canvas::pane_at(float wx, float wy) {
         for (uint64_t anc = a ? a->parent : 0; anc; ) { Activity* an = app_.tree().get(anc); if (!an) break; if (an->collapsed) { hidden = true; break; } anc = an->parent; }
         if (hidden) continue;
         if (p->rect().contains(wx, wy)) return p;
+        if (p->drawer_open() && !p->minimized() && p->drawer_rect().contains(wx, wy)) return p;
     }
     return nullptr;
 }
@@ -273,6 +286,11 @@ void Canvas::mouse_down(float sx, float sy, MouseButton b, int clicks, uint32_t 
         }
         if (b == MouseButton::Left && p->min_rect().contains(wx, wy) && scale * app_.cell_h() >= 2.5f) {
             p->toggle_minimized();
+            return;
+        }
+        if (b == MouseButton::Left && !p->artifacts().empty() && p->artifact_chip_rect().contains(wx, wy) && scale * app_.cell_h() >= 2.5f) {
+            p->toggle_drawer();
+            app_.focus(p->activity_id, false);
             return;
         }
         if (b == MouseButton::Middle && p->title_rect().contains(wx, wy)) {
@@ -309,6 +327,7 @@ void Canvas::mouse_down(float sx, float sy, MouseButton b, int clicks, uint32_t 
                 {"New child activity", [this] { app_.run_action("activity.new_child"); }},
                 {"Rename…", [this] { app_.run_action("activity.rename"); }},
                 {"Add note…", [this] { app_.run_action("activity.note"); }},
+                {p->drawer_open() ? "Close AGY artifact drawer" : "Open AGY artifact drawer", [p] { p->toggle_drawer(); }},
                 {p->minimized() ? "Expand pane" : "Minimize pane", [p] { p->toggle_minimized(); }},
                 {"Restart shell", [this] { app_.run_action("activity.restart"); }},
                 {"-", nullptr},

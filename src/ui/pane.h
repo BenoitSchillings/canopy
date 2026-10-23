@@ -54,16 +54,37 @@ public:
     static constexpr float TITLE_H = 30.f, GUTTER_W = 18.f, PAD = 6.f, RADIUS = 10.f, HANDLE = 14.f;
     Rect rect() const;
     Rect title_rect() const;
+    Rect artifact_chip_rect() const;
     Rect min_rect() const;
     Rect close_rect() const;
     Rect term_rect() const;
     Rect gutter_rect() const;
     Rect resize_handle() const;
+    Rect drawer_rect() const;
+    Rect drawer_close_rect() const;
+    Rect drawer_prev_rect() const;
+    Rect drawer_next_rect() const;
+    Rect drawer_proceed_rect() const;
+    Rect drawer_feedback_rect() const;
+    Rect drawer_edit_rect() const;
+    Rect drawer_body_rect() const;
     float width() const { return rect().w; }
     float height() const { return rect().h; }
     bool minimized() const;
     void set_minimized(bool m);
     void toggle_minimized() { set_minimized(!minimized()); }
+
+    // ---- AGY artifacts & plan drawer ----
+    const std::vector<AgyArtifact>& artifacts() const { return artifacts_; }
+    const AgyArtifact* active_artifact() const;
+    bool drawer_open() const { return drawer_open_ && !artifacts_.empty(); }
+    void set_drawer_open(bool open);
+    void toggle_drawer();
+    void select_artifact(int idx);
+    void step_artifact(int delta);
+    void open_artifact(const std::string& path);
+    void refresh_artifacts();
+    bool artifact_unread() const { return artifact_unread_; }
 
     // ---- session ----
     std::unique_ptr<Session> session;
@@ -137,7 +158,9 @@ public:
         bool valid = false;
         int64_t abs = -1; int col = -1; int row = -1;
         int block = -1;
-        bool gutter = false, title = false, min_btn = false, close_btn = false, handle = false, summary = false, chip = false, header = false, scroll_pill = false;
+        bool gutter = false, title = false, artifact_chip = false, min_btn = false, close_btn = false, handle = false, summary = false, chip = false, header = false, scroll_pill = false;
+        bool drawer = false, drawer_close = false, drawer_prev = false, drawer_next = false;
+        bool drawer_proceed = false, drawer_feedback = false, drawer_edit = false;
         int table_col = -1;
         std::optional<Span> span;
         const Hyperlink* link = nullptr;
@@ -196,7 +219,10 @@ private:
     void draw_scroll_pill(gfx::Renderer& r, gfx::Font& font, const DrawCtx& ctx);
     void draw_dormant(gfx::Renderer& r, gfx::Font& font, const DrawCtx& ctx);
     void draw_summary_banner(gfx::Renderer& r, gfx::Font& font, const DrawCtx& ctx);
+    void draw_artifact_drawer(gfx::Renderer& r, gfx::Font& font, const DrawCtx& ctx);
     void update_agent_state(double now);
+    bool update_artifacts(double now);
+    void ensure_artifact_loaded();
     void scan_block(const Block& b, BlockView& v);
     void extend_selection(int64_t abs, int col);
     bool selected(int64_t abs, int col) const;
@@ -236,6 +262,25 @@ private:
     std::string notify_msg_;
     AgentState agent_state_ = AgentState::None;
     std::string err_;
+
+    struct MdLine {
+        enum Kind : uint8_t { Normal = 0, H1, H2, H3, Code, Quote, AlertNote, AlertTip, AlertImportant, AlertWarning, AlertCaution, Rule, SummaryMeta };
+        Kind kind = Normal;
+        std::string text;
+        int indent = 0;
+    };
+    std::vector<AgyArtifact> artifacts_;
+    std::vector<std::string> pinned_artifacts_;
+    int artifact_idx_ = 0;
+    bool drawer_open_ = false;
+    bool artifact_unread_ = false;
+    int64_t last_artifact_mtime_ = 0;
+    double last_artifact_scan_ = 0;
+    float drawer_scroll_ = 0.f;
+    std::string loaded_artifact_path_;
+    int64_t loaded_artifact_mtime_ = 0;
+    int loaded_wrap_cols_ = 0;
+    std::vector<MdLine> md_lines_;
 };
 
 } // namespace canopy::ui

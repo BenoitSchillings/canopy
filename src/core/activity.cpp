@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <dirent.h>
 #include <fstream>
 #include <set>
 #include <sstream>
@@ -634,6 +635,169 @@ bool ActivityTree::load(const std::string& path_in) {
         return false;
     }
     return true;
+}
+
+namespace {
+
+std::string default_agy_dir() {
+    return home_dir() + "/.gemini/antigravity-cli";
+}
+
+std::string trim_slash(std::string s) {
+    while (s.size() > 1 && s.back() == '/') s.pop_back();
+    return s;
+}
+
+bool workspace_matches(const std::string& ws_raw, const std::string& cwd_raw) {
+    if (ws_raw.empty() || cwd_raw.empty()) return false;
+    std::string ws = trim_slash(ws_raw);
+    std::string cwd = trim_slash(cwd_raw);
+    if (ws == cwd) return true;
+    if (cwd.size() > ws.size() && cwd.compare(0, ws.size(), ws) == 0 && cwd[ws.size()] == '/') return true;
+    if (ws.size() > cwd.size() && ws.compare(0, cwd.size(), cwd) == 0 && ws[cwd.size()] == '/') return true;
+    return false;
+}
+
+struct HistEntry {
+    std::string workspace;
+    std::string conv_id;
+    int64_t timestamp = 0;
+};
+
+const std::vector<HistEntry>& load_agy_history_cached(const std::string& agy_dir) {
+    static std::string cached_path;
+    static int64_t cached_mtime = -1;
+    static off_t cached_size = -1;
+    static std::vector<HistEntry> cached_entries;
+
+    std::string path = (agy_dir.empty() ? default_agy_dir() : agy_dir) + "/history.jsonl";
+    struct stat st;
+    if (::stat(path.c_str(), &st) != 0) {
+        cached_entries.clear();
+        return cached_entries;
+    }
+    if (path == cached_path && (int64_t)st.st_mtime == cached_mtime && st.st_size == cached_size) {
+        return cached_entries;
+    }
+    cached_path = path;
+    cached_mtime = (int64_t)st.st_mtime;
+    cached_size = st.st_size;
+    cached_entries.clear();
+
+    std::ifstream f(path);
+    if (!f) return cached_entries;
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line.empty()) continue;
+        auto j = Json::parse(line);
+        if (!j || !j->is_object()) continue;
+        std::string ws = (*j)["workspace"].as_string("");
+        std::string cid = (*j)["conversationId"].as_string("");
+        int64_t ts = (*j)["timestamp"].as_int(0);
+        if (!ws.empty() && !cid.empty()) {
+            cached_entries.push_back({std::move(ws), std::move(cid), ts});
+        }
+    }
+    return cached_entries;
+}
+
+} // namespace
+
+std::string agy_find_conversation(const std::string& cwd, const std::string& agy_dir) {
+    if (cwd.empty()) return "";
+    const auto& entries = load_agy_history_cached(agy_dir);
+    std::string best_id;
+    int64_t best_ts = -1;
+    std::string clean_cwd = trim_slash(cwd);
+    // Prefer exact workspace match first, then prefix match.
+    for (const auto& e : entries) {
+        if (trim_slash(e.workspace) == clean_cwd && e.timestamp >= best_ts) {
+            best_ts = e.timestamp;
+            best_id = e.conv_id;
+        }
+    }
+    if (!best_id.empty()) return best_id;
+    for (const auto& e : entries) {
+        if (workspace_matches(e.workspace, clean_cwd) && e.timestamp >= best_ts) {
+            best_ts = e.timestamp;
+            best_id = e.conv_id;
+        }
+    }
+    return best_id;
+}
+
+std::optional<AgyArtifact> agy_inspect_artifact(const std::string& path, const std::string& conv_id) {
+    struct stat st;
+    if (::stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) return std::nullopt;
+    AgyArtifact a;
+    a.path = path;
+    size_t slash = path.rfind('/');
+    a.name = (slash == std::string::npos) ? path : path.substr(slash + 1);
+    a.conv_id = conv_id;
+    a.mtime = (int64_t)st.st_mtime;
+
+    std::string lname = a.name;
+    for (char& c : lname) if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
+    if (lname.find("plan") != std::string::npos || lname.find("proposal") != std::string::npos) {
+        a.request_feedback = true;
+    }
+
+    std::string meta_path = path + ".metadata.json";
+    std::ifstream mf(meta_path);
+    if (mf) {
+        std::stringstream ss;
+        ss << mf.rdbuf();
+        if (auto mj = Json::parse(ss.str()); mj && mj->is_object()) {
+            a.summary = (*mj)["summary"].as_string("");
+            a.user_facing = (*mj)["userFacing"].as_bool(true);
+            if ((*mj).has("requestFeedback")) {
+                a.request_feedback = (*mj)["requestFeedback"].as_bool(a.request_feedback);
+            }
+        }
+    }
+    return a;
+}
+
+std::vector<AgyArtifact> agy_scan_artifacts(const std::string& cwd, const std::string& conv_id_hint, const std::string& agy_dir) {
+    std::string base = agy_dir.empty() ? default_agy_dir() : agy_dir;
+    std::vector<std::string> conv_ids;
+    auto add_cid = [&](const std::string& cid) {
+        if (cid.empty()) return;
+        if (std::find(conv_ids.begin(), conv_ids.end(), cid) == conv_ids.end()) conv_ids.push_back(cid);
+    };
+    add_cid(conv_id_hint);
+    if (!cwd.empty()) {
+        const auto& entries = load_agy_history_cached(base);
+        for (size_t i = entries.size(); i-- > 0;) {
+            if (workspace_matches(entries[i].workspace, cwd)) add_cid(entries[i].conv_id);
+        }
+    }
+
+    std::vector<AgyArtifact> out;
+    auto scan_dir = [&](const std::string& dir, const std::string& cid) {
+        DIR* d = ::opendir(dir.c_str());
+        if (!d) return;
+        while (struct dirent* ent = ::readdir(d)) {
+            std::string name = ent->d_name;
+            if (name.empty() || name[0] == '.') continue;
+            if (name.size() < 4 || name.compare(name.size() - 3, 3, ".md") != 0) continue;
+            auto art = agy_inspect_artifact(dir + "/" + name, cid);
+            if (art && art->user_facing) out.push_back(std::move(*art));
+        }
+        ::closedir(d);
+    };
+
+    for (const auto& cid : conv_ids) {
+        std::string bdir = base + "/brain/" + cid;
+        scan_dir(bdir, cid);
+        scan_dir(bdir + "/scratch", cid);
+    }
+
+    std::sort(out.begin(), out.end(), [](const AgyArtifact& a, const AgyArtifact& b) {
+        if (a.mtime != b.mtime) return a.mtime > b.mtime;
+        return a.name < b.name;
+    });
+    return out;
 }
 
 } // namespace canopy

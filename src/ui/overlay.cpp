@@ -70,6 +70,25 @@ void Overlay::build_palette_candidates() {
         for (uint64_t cur = a->parent; cur; ) { Activity* p = t.get(cur); if (!p) break; path = p->name + " › " + path; cur = p->parent; }
         all_.push_back({"→ " + a->name, path.empty() ? "activity" : path, "", [this, id] { app_.focus(id, true); }});
     }
+    // AGY artifacts across panes
+    for (auto& kv : app_.panes()) {
+        Pane& p = *kv.second;
+        Activity* a = t.get(kv.first);
+        std::string aname = a ? a->name : "";
+        uint64_t act = kv.first;
+        for (const AgyArtifact& art : p.artifacts()) {
+            std::string path = art.path;
+            std::string icon = art.request_feedback ? "📋 " : "📄 ";
+            std::string detail = aname + (art.summary.empty() ? " · AGY artifact" : " · " + ellipsize(art.summary, 42));
+            all_.push_back({icon + art.name, detail, "", [this, act, path] {
+                app_.focus(act, true);
+                if (Pane* target = app_.pane(act)) {
+                    target->open_artifact(path);
+                    app_.canvas().fly_to_pane(*target);
+                }
+            }});
+        }
+    }
     // recent commands across panes (live + restored + persistent history)
     struct Rec { uint64_t act; uint64_t block; std::string cmd; int64_t when; std::string actname; int exit; };
     std::vector<Rec> recs;
@@ -378,7 +397,7 @@ void Overlay::draw(const DrawCtx& ctx) {
             "Ctrl+Alt+Arrows   move focus between panes  Ctrl+Shift+O      overview (zoom out to all)",
             "Ctrl+Shift+B      toggle sidebar            Ctrl+Shift+P      command palette",
             "Ctrl+Tab          find a terminal (miniatures + summaries)   Ctrl+Shift+M   peek rail",
-            "Ctrl+Shift+U      jump to next terminal needing input / approval",
+            "Ctrl+Shift+U      jump to next terminal needing input / approval   Ctrl+Shift+A   AGY artifact drawer",
             "Ctrl+wheel        zoom canvas               Ctrl+= / Ctrl+-   zoom in / out, Ctrl+0 reset",
             "Ctrl+Shift+= / -  font size                 Alt+drag / middle-drag   pan the canvas",
             "",
@@ -392,7 +411,7 @@ void Overlay::draw(const DrawCtx& ctx) {
             "Shift+Enter       multi-line newline (claude / agy / bash)   Ctrl+Shift+F   search scrollback",
             "Ctrl+click        open path / URL / #L123   Right-click       context menu",
             "",
-            "Shell:  canopy new <name> · canopy close · canopy note <text> · canopy name <name> · canopy mark · canopy history",
+            "Shell:  canopy new <name> · canopy close · canopy artifact <path> · canopy note <text> · canopy name <name> · canopy mark · canopy history",
             "",
             "Ctrl+Shift+H or Esc closes this help",
         };

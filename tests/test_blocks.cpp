@@ -73,7 +73,8 @@ int main() {
     bt.on_osc(ev(7770, {"note", base64_encode("a note")}, 14));
     bt.on_osc(ev(7770, {"name", base64_encode("renamed")}, 14));
     bt.on_osc(ev(7770, {"close", ""}, 14));
-    CHECK(reqs.size() == 4 && reqs[0].first == "new" && reqs[0].second == "fix tests" && reqs[2].second == "renamed" && reqs[3].first == "close");
+    bt.on_osc(ev(7770, {"artifact", base64_encode("/tmp/plan.md")}, 14));
+    CHECK(reqs.size() == 5 && reqs[0].first == "new" && reqs[0].second == "fix tests" && reqs[2].second == "renamed" && reqs[3].first == "close" && reqs[4].first == "artifact" && reqs[4].second == "/tmp/plan.md");
     // lookup by line
     CHECK(bt.index_at_line(5) == 0 && bt.index_at_line(9) == 0 && bt.index_at_line(12) == 1 && bt.index_at_line(13) == 2);
     CHECK(bt.at_line(4) == nullptr);
