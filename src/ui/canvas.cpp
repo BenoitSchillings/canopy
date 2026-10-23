@@ -81,9 +81,36 @@ void Canvas::reset_zoom() {
     if (Pane* p = app_.focused_pane()) fly_to_pane(*p); else set_zoom(1.f);
 }
 
+std::vector<uint64_t> Canvas::ranked_panes(double now) const {
+    std::vector<uint64_t> others;
+    uint64_t foc = app_.focused_id();
+    for (auto& kv : app_.panes()) {
+        uint64_t id = kv.first;
+        Activity* a = app_.tree().get(id);
+        bool hidden = false;
+        for (uint64_t anc = a ? a->parent : 0; anc; ) {
+            Activity* an = app_.tree().get(anc);
+            if (!an) break;
+            if (an->collapsed) { hidden = true; break; }
+            anc = an->parent;
+        }
+        if (hidden) continue;
+        if (id != foc) others.push_back(id);
+    }
+    std::stable_sort(others.begin(), others.end(), [&](uint64_t x, uint64_t y) {
+        Pane* px = app_.pane(x);
+        Pane* py = app_.pane(y);
+        return (px ? px->attention_score(now, foc) : -1e9f) > (py ? py->attention_score(now, foc) : -1e9f);
+    });
+    if (foc && app_.pane(foc)) others.push_back(foc);
+    return others;
+}
+
 void Canvas::toggle_overview() {
     if (overview_) { exit_overview(); return; }
     overview_ = true;
+    auto rk = ranked_panes(app_.now());
+    overview_sel_ = rk.empty() ? app_.focused_id() : rk[0];
     pre_overview_scale_ = tscale_; pre_overview_tx_ = ttx_; pre_overview_ty_ = tty_;
     fit_all(false);
 }
@@ -93,6 +120,67 @@ void Canvas::exit_overview() {
     overview_ = false;
     if (Pane* p = app_.focused_pane()) fly_to_pane(*p);
     else animate_to(pre_overview_scale_, pre_overview_tx_, pre_overview_ty_, false);
+}
+
+bool Canvas::key(const KeyEvent& ev) {
+    if (!overview_) return false;
+    auto rk = ranked_panes(app_.now());
+    if (rk.empty()) { exit_overview(); return true; }
+    if (std::find(rk.begin(), rk.end(), overview_sel_) == rk.end()) overview_sel_ = rk[0];
+
+    if (ev.key == Key::Escape) { exit_overview(); return true; }
+    if (ev.key == Key::Enter || (ev.key == Key::Char && ev.keysym == ' ' && !(ev.mods & (MOD_CTRL | MOD_ALT)))) {
+        uint64_t target = overview_sel_ ? overview_sel_ : rk[0];
+        overview_ = false;
+        if (Pane* p = app_.pane(target); p && p->minimized()) p->set_minimized(false);
+        app_.focus(target, true);
+        return true;
+    }
+    if (ev.key == Key::Tab) {
+        auto it = std::find(rk.begin(), rk.end(), overview_sel_);
+        size_t idx = (it == rk.end()) ? 0 : (size_t)(it - rk.begin());
+        int d = (ev.mods & MOD_SHIFT) ? -1 : 1;
+        idx = (idx + rk.size() + d) % rk.size();
+        overview_sel_ = rk[idx];
+        app_.request_redraw();
+        return true;
+    }
+    if (ev.key == Key::Left || ev.key == Key::Right || ev.key == Key::Up || ev.key == Key::Down) {
+        int dx = (ev.key == Key::Right ? 1 : ev.key == Key::Left ? -1 : 0);
+        int dy = (ev.key == Key::Down ? 1 : ev.key == Key::Up ? -1 : 0);
+        Pane* cur = app_.pane(overview_sel_);
+        if (cur) {
+            Rect C = cur->rect();
+            float cx = C.x + C.w / 2.f, cy = C.y + C.h / 2.f;
+            uint64_t best = 0; float best_d = 1e18f;
+            for (uint64_t id : rk) {
+                if (id == overview_sel_) continue;
+                Pane* p = app_.pane(id);
+                if (!p) continue;
+                Rect R = p->rect();
+                float px = R.x + R.w / 2.f, py = R.y + R.h / 2.f;
+                float vx = px - cx, vy = py - cy;
+                float along = vx * dx + vy * dy;
+                if (along <= 1.f) continue;
+                float across = std::fabs(vx * dy) + std::fabs(vy * dx);
+                float d = along + across * 2.5f;
+                if (d < best_d) { best_d = d; best = id; }
+            }
+            if (best) { overview_sel_ = best; app_.request_redraw(); }
+        }
+        return true;
+    }
+    if (ev.key == Key::Char && !(ev.mods & (MOD_CTRL | MOD_ALT)) && ev.keysym >= '1' && ev.keysym <= '9') {
+        size_t idx = (size_t)(ev.keysym - '1');
+        if (idx < rk.size()) {
+            uint64_t target = rk[idx];
+            overview_ = false;
+            if (Pane* p = app_.pane(target); p && p->minimized()) p->set_minimized(false);
+            app_.focus(target, true);
+        }
+        return true;
+    }
+    return false;
 }
 
 void Canvas::sync_panes() {
@@ -200,8 +288,9 @@ void Canvas::draw_connectors() {
         Pane& c = *kv.second;
         float x0 = parent->x + parent->width() + (parent->drawer_open() && !parent->minimized() ? parent->drawer_rect().w + 12.f : 0.f), y0 = parent->y + Pane::TITLE_H / 2;
         float x1 = c.x, y1 = c.y + Pane::TITLE_H / 2;
-        bool hot = kv.first == foc || a->parent == foc;
-        RGBA cc = alpha(col(th.accent), hot ? 0.75f : 0.0f);
+        uint64_t highlight_id = overview_ ? overview_sel_ : foc;
+        bool hot = kv.first == highlight_id || a->parent == highlight_id;
+        RGBA cc = alpha(col(th.accent), hot ? 0.85f : 0.0f);
         RGBA base = alpha(col(th.chrome_fg), 0.28f);
         RGBA lc = hot ? cc : base;
         float thick = std::max(1.f, (hot ? 2.f : 1.2f) / std::max(scale, 0.25f));
@@ -247,14 +336,93 @@ void Canvas::draw(const DrawCtx& base) {
         p->draw(r, app_.font(), ctx);
     }
     r.set_transform({1, 0, 0});
+    const Theme& th = app_.theme();
+    gfx::Font& font = app_.font();
+    float asc = font.metrics().ascent;
+    auto ranked = ranked_panes(base.now);
     if (overview_) {
-        const Theme& th = app_.theme();
-        std::string hint = "Overview · click a pane to open · Esc to return";
-        float w = r.measure_text(app_.font(), hint) + 24;
-        Rect b = {viewport.x + (viewport.w - w) / 2, viewport.y + viewport.h - 44, w, 30};
-        r.rounded_rect(b, 15, alpha(col(th.chrome_bg), 0.9f));
-        r.rounded_rect_stroke(b, 15, alpha(col(th.accent), 0.5f), 1);
-        r.draw_text(app_.font(), b.x + 12, b.y + 20, hint, col(th.chrome_fg));
+        hud_tree_rect_ = {0, 0, 0, 0};
+        hud_next_rect_ = {0, 0, 0, 0};
+        hud_next_id_ = 0;
+        if (!ranked.empty() && std::find(ranked.begin(), ranked.end(), overview_sel_) == ranked.end()) {
+            overview_sel_ = ranked[0];
+        }
+        // Draw ranked badges & spotlight in screen space above each pane
+        for (size_t i = 0; i < ranked.size(); ++i) {
+            uint64_t id = ranked[i];
+            Pane* p = app_.pane(id);
+            Activity* a = app_.tree().get(id);
+            if (!p || !a) continue;
+            Rect R = p->rect();
+            Rect sr = {to_screen_x(R.x), to_screen_y(R.y), R.w * scale, R.h * scale};
+            if (sr.x + sr.w < viewport.x || sr.x > viewport.x + viewport.w || sr.y + sr.h < viewport.y || sr.y > viewport.y + viewport.h) continue;
+
+            bool is_top = (i == 0 && (ranked.size() == 1 || id != app_.focused_id()));
+            bool is_sel = (id == overview_sel_);
+            bool urgent = p->waiting_for_user() || p->artifact_unread() || p->unread;
+            RGBA badge_c = is_top ? (urgent ? col(th.warning) : col(th.accent)) : (is_sel ? col(th.accent) : col(th.chrome_fg));
+
+            if (is_sel || is_top) {
+                float pulse = is_top && urgent ? (0.65f + 0.25f * (float)std::sin(base.now * 6.0)) : 0.85f;
+                r.rounded_rect_stroke(sr.inset(-3.f), Pane::RADIUS * scale + 3.f, alpha(badge_c, pulse * (is_sel ? 0.95f : 0.65f)), is_sel ? 2.5f : 1.5f);
+                if (is_sel) r.rounded_rect_stroke(sr.inset(-6.f), Pane::RADIUS * scale + 6.f, alpha(badge_c, 0.28f), 2.f);
+            }
+
+            std::string reason = (id == app_.focused_id() && ranked.size() > 1) ? "current" : p->recommendation_reason(base.now);
+            std::string pill_txt = (is_top ? "★ #1 NEXT UP · " : ("#" + std::to_string(i + 1) + " · ")) + a->name + "  (" + reason + ")";
+            float pw = r.measure_text(font, pill_txt, (is_top || is_sel) ? gfx::STYLE_BOLD : gfx::STYLE_REGULAR, 0.85f) + 18.f;
+            float ph = 22.f;
+            Rect pr = {sr.x, std::max(viewport.y + 6.f, sr.y - ph - 6.f), pw, ph};
+            r.rounded_rect(pr, 11.f, alpha(col(th.chrome_bg), 0.94f));
+            r.rounded_rect_stroke(pr, 11.f, alpha(badge_c, (is_top || is_sel) ? 0.9f : 0.45f), (is_top || is_sel) ? 1.5f : 1.f);
+            r.draw_text(font, pr.x + 9.f, pr.y + (ph - app_.cell_h() * 0.85f) / 2.f + asc * 0.85f, pill_txt,
+                        (is_top || is_sel) ? (is_top && urgent ? col(th.warning) : col(th.foreground)) : alpha(col(th.chrome_fg), 0.85f),
+                        (is_top || is_sel) ? gfx::STYLE_BOLD : gfx::STYLE_REGULAR, 0.85f);
+        }
+
+        std::string sel_info;
+        if (Pane* sp = app_.pane(overview_sel_)) {
+            Activity* sa = app_.tree().get(overview_sel_);
+            sel_info = "★ Selected: " + (sa ? sa->name : std::string("?")) + " (" + sp->recommendation_reason(base.now) + ")  ·  ";
+        }
+        std::string hint = sel_info + "Enter/Space opens · Tab cycles · 1–9 jumps · Click pane · Esc returns";
+        float w = r.measure_text(font, hint, gfx::STYLE_REGULAR, 0.9f) + 28.f;
+        Rect b = {viewport.x + (viewport.w - w) / 2.f, viewport.y + viewport.h - 44.f, w, 30.f};
+        r.rounded_rect(b, 15.f, alpha(col(th.chrome_bg), 0.94f));
+        r.rounded_rect_stroke(b, 15.f, alpha(col(th.accent), 0.65f), 1.2f);
+        r.draw_text(font, b.x + 14.f, b.y + (30.f - app_.cell_h() * 0.9f) / 2.f + asc * 0.9f, hint, col(th.foreground), gfx::STYLE_REGULAR, 0.9f);
+    } else {
+        // Floating Canvas HUD at bottom-left: [⊞ Tree (N)] + [★ Next: <name> (<reason>)]
+        float hy = viewport.y + viewport.h - 36.f;
+        float hx = viewport.x + 14.f;
+        float hh = 26.f;
+        std::string tree_lbl = "⊞ Tree (" + std::to_string(app_.panes().size()) + ")";
+        float tw = r.measure_text(font, tree_lbl, gfx::STYLE_BOLD, 0.85f) + 20.f;
+        hud_tree_rect_ = {hx, hy, tw, hh};
+        r.rounded_rect(hud_tree_rect_, 13.f, alpha(col(th.chrome_bg), hover_hud_tree_ ? 0.96f : 0.86f));
+        r.rounded_rect_stroke(hud_tree_rect_, 13.f, alpha(hover_hud_tree_ ? col(th.accent) : col(th.chrome_fg), hover_hud_tree_ ? 0.85f : 0.35f), 1.f);
+        r.draw_text(font, hx + 10.f, hy + (hh - app_.cell_h() * 0.85f) / 2.f + asc * 0.85f, tree_lbl,
+                    hover_hud_tree_ ? col(th.foreground) : col(th.chrome_fg), gfx::STYLE_BOLD, 0.85f);
+
+        hud_next_id_ = 0;
+        hud_next_rect_ = {0, 0, 0, 0};
+        if (!ranked.empty() && ranked[0] != app_.focused_id()) {
+            hud_next_id_ = ranked[0];
+            Pane* np = app_.pane(hud_next_id_);
+            Activity* na = app_.tree().get(hud_next_id_);
+            if (np && na) {
+                bool urgent = np->waiting_for_user() || np->artifact_unread() || np->unread;
+                std::string next_lbl = (urgent ? "★ Next: " : "↪ Next: ") + na->name + " · " + np->recommendation_reason(base.now);
+                float nw = r.measure_text(font, next_lbl, urgent ? gfx::STYLE_BOLD : gfx::STYLE_REGULAR, 0.85f) + 22.f;
+                hud_next_rect_ = {hx + tw + 8.f, hy, nw, hh};
+                RGBA nc = urgent ? col(th.warning) : col(th.accent);
+                r.rounded_rect(hud_next_rect_, 13.f, alpha(col(th.chrome_bg), hover_hud_next_ ? 0.96f : (urgent ? 0.92f : 0.84f)));
+                r.rounded_rect_stroke(hud_next_rect_, 13.f, alpha(nc, hover_hud_next_ || urgent ? 0.85f : 0.4f), urgent ? 1.3f : 1.f);
+                r.draw_text(font, hud_next_rect_.x + 11.f, hy + (hh - app_.cell_h() * 0.85f) / 2.f + asc * 0.85f, next_lbl,
+                            urgent ? col(th.warning) : (hover_hud_next_ ? col(th.foreground) : col(th.chrome_fg)),
+                            urgent ? gfx::STYLE_BOLD : gfx::STYLE_REGULAR, 0.85f);
+            }
+        }
     }
     r.pop_clip();
 }
@@ -274,6 +442,17 @@ Pane* Canvas::pane_at(float wx, float wy) {
 }
 
 void Canvas::mouse_down(float sx, float sy, MouseButton b, int clicks, uint32_t mods) {
+    if (b == MouseButton::Left && !overview_) {
+        if (hud_tree_rect_.contains(sx, sy)) {
+            toggle_overview();
+            return;
+        }
+        if (hud_next_id_ && hud_next_rect_.contains(sx, sy)) {
+            if (Pane* bp = app_.pane(hud_next_id_); bp && bp->minimized()) bp->set_minimized(false);
+            app_.focus(hud_next_id_, true);
+            return;
+        }
+    }
     float wx = to_world_x(sx), wy = to_world_y(sy);
     held_ = b;
     moved_ = false;
@@ -390,10 +569,15 @@ void Canvas::mouse_move(float sx, float sy, uint32_t mods, MouseButton held) {
         return;
     default: break;
     }
-    Pane* p = pane_at(wx, wy);
+    hover_hud_tree_ = !overview_ && hud_tree_rect_.contains(sx, sy);
+    hover_hud_next_ = !overview_ && hud_next_id_ != 0 && hud_next_rect_.contains(sx, sy);
+    Pane* p = (hover_hud_tree_ || hover_hud_next_) ? nullptr : pane_at(wx, wy);
+    if (overview_ && p && overview_sel_ != p->activity_id) {
+        overview_sel_ = p->activity_id;
+    }
     if (hover_pane_ && hover_pane_ != p) hover_pane_->clear_hover();
     hover_pane_ = p;
-    if (p) { p->set_hover(wx, wy); p->mouse_move(wx, wy, mods, held); }
+    if (p && !overview_) { p->set_hover(wx, wy); p->mouse_move(wx, wy, mods, held); }
     app_.request_redraw();
 }
 
@@ -424,6 +608,8 @@ int Canvas::cursor_for(float sx, float sy) {
     if (drag_ == Pan) return SDL_SYSTEM_CURSOR_SIZEALL;
     if (drag_ == Move) return SDL_SYSTEM_CURSOR_SIZEALL;
     if (drag_ == Resize) return SDL_SYSTEM_CURSOR_SIZENWSE;
+    if (hover_hud_tree_ || hover_hud_next_) return SDL_SYSTEM_CURSOR_HAND;
+    if (overview_ && hover_pane_) return SDL_SYSTEM_CURSOR_HAND;
     if (hover_pane_) return hover_pane_->system_cursor();
     return SDL_SYSTEM_CURSOR_ARROW;
 }

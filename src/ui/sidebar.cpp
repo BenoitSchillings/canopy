@@ -88,6 +88,12 @@ void Sidebar::draw(const DrawCtx& ctx) {
             r.draw_text(font, rect.x + 14, row.r.y + 18, row.label, alpha(fg, 0.55f), gfx::STYLE_BOLD, 0.8f);
             if (row.label == "ACTIVITIES") {
                 bool hot = hover_ == (int)i;
+                Rect ob = {rect.x + rect.w - 78, row.r.y + 4, 20, 20};
+                std::string oicon = "⊞";
+                float ow = r.measure_text(font, oicon);
+                r.rounded_rect(ob, 5, alpha(col(th.accent), app_.canvas().overview() ? 0.5f : (hot ? 0.3f : 0.14f)));
+                r.draw_text(font, ob.x + (ob.w - ow) / 2, ob.y + 15, oicon, col(th.foreground));
+
                 Rect cb = {rect.x + rect.w - 54, row.r.y + 4, 20, 20};
                 std::string cicon = compact ? "▤" : "☰";
                 float cw = r.measure_text(font, cicon);
@@ -209,7 +215,8 @@ bool Sidebar::mouse_down(float sx, float sy, MouseButton b, int clicks, uint32_t
         if (row.kind == Row::Header) {
             if (row.label == "ACTIVITIES" && b == MouseButton::Left) {
                 if (sx >= rect.x + rect.w - 32) app_.run_action("activity.new_child");
-                else if (sx >= rect.x + rect.w - 58 && sx < rect.x + rect.w - 32) { compact = !compact; app_.request_redraw(); }
+                else if (sx >= rect.x + rect.w - 56 && sx < rect.x + rect.w - 32) { compact = !compact; app_.request_redraw(); }
+                else if (sx >= rect.x + rect.w - 82 && sx < rect.x + rect.w - 56) { app_.canvas().toggle_overview(); }
             }
             return true;
         }

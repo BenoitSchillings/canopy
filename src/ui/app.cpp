@@ -613,6 +613,7 @@ void App::handle_event(const gfx::Event& ev) {
         }
         if (overlay_->active() && overlay_->key(ev.key)) break;
         if (handle_global_key(ev.key)) break;
+        if (canvas_->overview() && canvas_->key(ev.key)) break;
         if (Pane* p = focused_pane()) {
             if (ev.key.key == Key::Enter && !p->live()) { ensure_session(*p); break; }
             p->key(ev.key);
@@ -622,6 +623,7 @@ void App::handle_event(const gfx::Event& ev) {
     case T::Text:
         if (switcher_->open() && switcher_->text(ev.key.text)) break;
         if (overlay_->active() && overlay_->text(ev.key.text)) break;
+        if (canvas_->overview()) break;
         if (Pane* p = focused_pane()) { if (!p->live()) ensure_session(*p); p->text_input(ev.key.text); }
         break;
     case T::MouseDown:

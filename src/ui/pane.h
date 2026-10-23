@@ -184,6 +184,7 @@ public:
     // Relevance for ranking in the rail/switcher: higher = more likely what the user is looking for.
     float attention_score(double now, uint64_t focused) const;
     std::vector<std::string> attention_badges(double now) const;
+    std::string recommendation_reason(double now) const;
 
     // ---- state ----
     enum class AgentState : uint8_t { None = 0, Streaming, WaitingInput, NeedsApproval };

@@ -27,6 +27,8 @@ public:
     void toggle_overview();
     void exit_overview();
     bool overview() const { return overview_; }
+    std::vector<uint64_t> ranked_panes(double now) const;
+    bool key(const KeyEvent& ev);
     bool animating() const;
 
     void layout();                   // recompute auto-placed positions from the tree
@@ -57,7 +59,13 @@ private:
     std::vector<uint64_t> order_;           // z-order, back to front
     float tscale_ = 1.f, ttx_ = 0.f, tty_ = 0.f;
     bool overview_ = false;
+    uint64_t overview_sel_ = 0;
     float pre_overview_scale_ = 1.f, pre_overview_tx_ = 0.f, pre_overview_ty_ = 0.f;
+    Rect hud_tree_rect_ = {0, 0, 0, 0};
+    Rect hud_next_rect_ = {0, 0, 0, 0};
+    uint64_t hud_next_id_ = 0;
+    bool hover_hud_tree_ = false;
+    bool hover_hud_next_ = false;
     enum Drag { None, Pan, Move, Resize, PaneDrag } drag_ = None;
     Pane* drag_pane_ = nullptr;
     float drag_x_ = 0, drag_y_ = 0, drag_px_ = 0, drag_py_ = 0;

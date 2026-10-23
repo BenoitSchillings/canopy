@@ -1737,7 +1737,7 @@ void Pane::draw(Renderer& r, Font& font, const DrawCtx& ctx) {
     draw_scrollbar(r, ctx);
     if (lines_below() > 0 && session && session->alive() && !ctx.in_rail && s >= 0.45f) draw_scroll_pill(r, font, ctx);
     if (!session || !session->alive()) draw_dormant(r, font, ctx);
-    if (s < 0.6f && !ctx.in_rail) draw_summary_banner(r, font, ctx);
+    if ((s < 0.6f || ctx.overview) && !ctx.in_rail) draw_summary_banner(r, font, ctx);
     // border
     RGBA border = ctx.focused ? col(th.accent) : (waiting_for_user() ? alpha(col(th.warning), 0.75f) : alpha(col(th.chrome_fg), 0.3f));
     r.rounded_rect_stroke(R, RADIUS, border, (ctx.focused || waiting_for_user()) ? 1.5f : 1.f);
@@ -2508,6 +2508,34 @@ std::vector<std::string> Pane::attention_badges(double now) const {
         else b.push_back("📄 " + ellipsize(art->name, 16));
     }
     return b;
+}
+
+std::string Pane::recommendation_reason(double now) const {
+    if (agent_state_ == AgentState::NeedsApproval) return "⚡ needs approval";
+    if (artifact_unread_ && active_artifact() && active_artifact()->request_feedback) return "📋 plan ready for review";
+    if (agent_state_ == AgentState::WaitingInput) return "⏸ waiting for your input";
+    if (bell_unread_) return notify_msg_.empty() ? "🔔 notification" : ("🔔 " + ellipsize(notify_msg_, 24));
+    if (session && session->alive()) {
+        const auto& bl = session->blocks().blocks();
+        for (size_t i = bl.size(); i-- > 0;) {
+            if (bl[i].state == BlockState::Done && !bl[i].command.empty()) {
+                if (bl[i].exit_code != 0 && unread) return "✗ failed (exit " + std::to_string(bl[i].exit_code) + ")";
+                break;
+            }
+        }
+        if (artifact_unread_ && active_artifact()) return "📄 updated " + ellipsize(active_artifact()->name, 18);
+        if (unread) return "● new output";
+        if (!bl.empty() && bl.back().state == BlockState::Running) return "⟳ running " + ellipsize(bl.back().command, 18);
+        if (session->term().modes().alt_screen) {
+            std::string p = session->pty().foreground_name();
+            return p.empty() ? "active TUI" : ("in " + p);
+        }
+        double age = now - std::max(last_output, last_finish);
+        if (last_output > 0 && age < 120.0) return "active " + fmt_duration(age) + " ago";
+        return "idle at prompt";
+    }
+    if (session) return "shell exited";
+    return "dormant";
 }
 
 void Pane::draw_summary_banner(gfx::Renderer& r, gfx::Font& font, const DrawCtx& ctx) {
