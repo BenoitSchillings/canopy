@@ -1289,7 +1289,7 @@ void Pane::mouse_down(float wx, float wy, MouseButton b, int clicks, uint32_t mo
                 });
                 return;
             }
-            if (hover.drawer_edit) {
+            if (hover.drawer_edit || (clicks >= 2 && drawer_body_rect().contains(wx, wy))) {
                 if (const AgyArtifact* art = active_artifact()) {
                     app_.open_path(art->path, 0, cwd(), activity_id);
                 }

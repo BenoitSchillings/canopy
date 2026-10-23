@@ -468,7 +468,12 @@ void Canvas::mouse_down(float sx, float sy, MouseButton b, int clicks, uint32_t 
             return;
         }
         if (b == MouseButton::Left && !p->artifacts().empty() && p->artifact_chip_rect().contains(wx, wy) && scale * app_.cell_h() >= 2.5f) {
-            p->toggle_drawer();
+            if (clicks >= 2) {
+                p->set_drawer_open(true);
+                if (const AgyArtifact* art = p->active_artifact()) app_.open_path(art->path, 0, p->cwd(), p->activity_id);
+            } else {
+                p->toggle_drawer();
+            }
             app_.focus(p->activity_id, false);
             return;
         }
@@ -478,11 +483,12 @@ void Canvas::mouse_down(float sx, float sy, MouseButton b, int clicks, uint32_t 
         }
         bring_to_front(p->activity_id);
         if (overview_) {
-            app_.focus(p->activity_id, true);
             overview_ = false;
+            if (p->minimized()) p->set_minimized(false);
+            app_.focus(p->activity_id, true);
             return;
         }
-        if (p->minimized() && b == MouseButton::Left && !p->title_rect().contains(wx, wy)) {
+        if (p->minimized() && b == MouseButton::Left && (clicks >= 2 || !p->title_rect().contains(wx, wy))) {
             p->set_minimized(false);
             app_.focus(p->activity_id, true);
             return;
@@ -493,7 +499,7 @@ void Canvas::mouse_down(float sx, float sy, MouseButton b, int clicks, uint32_t 
             return;
         }
         if (b == MouseButton::Left && p->title_rect().contains(wx, wy)) {
-            if (clicks == 2) { app_.focus(p->activity_id, false); app_.run_action("activity.rename"); return; }
+            if (clicks == 2 && !p->minimized() && !animating()) { app_.focus(p->activity_id, false); app_.run_action("activity.rename"); return; }
             drag_ = Move; drag_pane_ = p; drag_x_ = wx; drag_y_ = wy; drag_px_ = p->x; drag_py_ = p->y;
             app_.focus(p->activity_id, false);
             return;

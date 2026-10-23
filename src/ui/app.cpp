@@ -147,6 +147,7 @@ void App::focus(uint64_t id, bool fly) {
     canvas_->bring_to_front(id);
     ensure_session(*p);
     if (p->live()) p->session->term().notify_focus(window_->focused());
+    if (fly && p->minimized()) p->set_minimized(false);
     if (fly) canvas_->fly_to_pane(*p); else canvas_->ensure_visible(*p);
     if (Activity* a = tree_.get(id)) title_ = a->name;
     window_->set_title(title_ + " — Canopy");

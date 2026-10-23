@@ -239,8 +239,10 @@ bool Sidebar::mouse_down(float sx, float sy, MouseButton b, int clicks, uint32_t
                 app_.tree().notify();
                 return true;
             }
+            Pane* sp = app_.pane(row.id);
+            bool was_min = sp && sp->minimized();
             app_.focus(row.id, true);
-            if (clicks == 2) app_.run_action("activity.rename");
+            if (clicks == 2 && !was_min) app_.run_action("activity.rename");
             else { drag_id_ = row.id; drag_y_ = sy; dragging_ = false; }
         } else if (b == MouseButton::Middle) {
             app_.close_activity(row.id);
